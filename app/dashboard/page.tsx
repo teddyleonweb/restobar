@@ -14,8 +14,9 @@ import {
   Store,
   User,
   Settings,
-  RefreshCw,
   AlertCircle,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
 import { useDataSync } from "@/hooks/useDataSync"
 import { useStorageSync } from "@/hooks/useStorageSync"
@@ -90,16 +91,19 @@ export default function Dashboard() {
     [updateRestaurants],
   )
 
-  // Auto-sync cada 10 segundos - CORREGIDO: usar solo el action name
+  // Auto-sync con fallback a datos locales
   const {
     lastUpdate,
     error: syncError,
+    isOffline,
     forceRefresh,
+    goOffline,
   } = useDataSync<{ restaurants: Restaurant[] }>({
-    endpoint: "get-restaurants", // Solo el nombre de la acción
-    interval: 10000, // 10 segundos
+    endpoint: "get-restaurants",
+    interval: 15000, // 15 segundos para reducir carga
     onDataChange: handleServerDataChange,
     enabled: !!user,
+    fallbackToLocal: true,
   })
 
   useEffect(() => {
@@ -136,6 +140,42 @@ export default function Dashboard() {
       return
     }
 
+    // Si estamos offline, agregar solo localmente
+    if (isOffline) {
+      const newRestaurantData: Restaurant = {
+        id: Date.now(), // ID temporal
+        name: newRestaurant.name,
+        slug: newRestaurant.name.toLowerCase().replace(/\s+/g, "-"),
+        description: newRestaurant.description,
+        address: newRestaurant.address,
+        city: newRestaurant.city,
+        phone: newRestaurant.phone,
+        email: newRestaurant.email,
+        status: "trial",
+        trial_start_date: new Date().toISOString(),
+        trial_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        created_at: new Date().toISOString(),
+      }
+
+      const currentRestaurants = restaurants || []
+      updateRestaurants([newRestaurantData, ...currentRestaurants])
+
+      setNewRestaurant({
+        name: "",
+        description: "",
+        address: "",
+        city: "",
+        phone: "",
+        email: "",
+      })
+      setShowAddRestaurant(false)
+      setMessage({
+        type: "success",
+        text: "✅ Restaurante agregado localmente (se sincronizará cuando vuelva la conexión)",
+      })
+      return
+    }
+
     const token = localStorage.getItem("tubarresto_token")
 
     try {
@@ -156,7 +196,6 @@ export default function Dashboard() {
         const newRestaurantData = result.data.restaurant
         const currentRestaurants = restaurants || []
 
-        // Actualizar usando el hook de sincronización
         updateRestaurants([newRestaurantData, ...currentRestaurants])
 
         setNewRestaurant({
@@ -170,13 +209,13 @@ export default function Dashboard() {
         setShowAddRestaurant(false)
         setMessage({ type: "success", text: "✅ Restaurante agregado exitosamente" })
 
-        // Forzar refresh para sincronizar con servidor
         setTimeout(() => forceRefresh(), 1000)
       } else {
         setMessage({ type: "error", text: result.error || "Error al agregar restaurante" })
       }
     } catch (error) {
-      setMessage({ type: "error", text: "Error de conexión" })
+      setMessage({ type: "error", text: "Error de conexión. Trabajando en modo offline." })
+      goOffline()
     }
   }
 
@@ -190,13 +229,19 @@ export default function Dashboard() {
 
       console.log("🧪 Probando conexión a:", testUrl)
 
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+
       const response = await fetch(testUrl, {
         method: "GET",
         mode: "cors",
         headers: {
           Accept: "application/json",
         },
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       console.log("📊 Test - Status:", response.status)
 
@@ -218,10 +263,17 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("💥 Error test conexión:", error)
-      setMessage({
-        type: "error",
-        text: "❌ No se puede conectar. Verifica que api.php existe en el servidor",
-      })
+      if (error instanceof Error && error.name === "AbortError") {
+        setMessage({
+          type: "error",
+          text: "❌ Timeout: El servidor no responde",
+        })
+      } else {
+        setMessage({
+          type: "error",
+          text: "❌ No se puede conectar. Trabajando en modo offline.",
+        })
+      }
     }
   }
 
@@ -269,11 +321,19 @@ export default function Dashboard() {
               />
             </div>
             <div className="flex items-center space-x-4">
-              {/* Indicador de última actualización */}
+              {/* Indicador de conexión */}
               <div className="flex items-center text-sm text-gray-500">
-                <RefreshCw className="w-4 h-4 mr-1" />
+                {isOffline ? (
+                  <WifiOff className="w-4 h-4 mr-1 text-orange-500" />
+                ) : (
+                  <Wifi className="w-4 h-4 mr-1 text-green-500" />
+                )}
                 <span className="hidden sm:inline">
-                  {lastUpdate ? `Actualizado: ${lastUpdate.toLocaleTimeString()}` : "Sincronizando..."}
+                  {isOffline
+                    ? "Modo offline"
+                    : lastUpdate
+                      ? `Actualizado: ${lastUpdate.toLocaleTimeString()}`
+                      : "Sincronizando..."}
                 </span>
                 <button
                   onClick={forceRefresh}
@@ -327,8 +387,21 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Modo offline */}
+        {isOffline && (
+          <div className="mb-6 p-4 rounded-lg bg-orange-100 text-orange-700 border border-orange-300">
+            <div className="flex items-center">
+              <WifiOff className="w-5 h-5 mr-2" />
+              <span>Trabajando en modo offline. Los cambios se sincronizarán cuando vuelva la conexión.</span>
+              <button onClick={forceRefresh} className="ml-auto text-orange-600 hover:text-orange-800 underline">
+                Intentar reconectar
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Error de sincronización */}
-        {syncError && (
+        {syncError && !isOffline && (
           <div className="mb-6 p-4 rounded-lg bg-yellow-100 text-yellow-700 border border-yellow-300">
             <div className="flex items-center">
               <AlertCircle className="w-5 h-5 mr-2" />
@@ -345,7 +418,9 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2 font-playfair">¡Hola, {user?.first_name}!</h1>
           <p className="text-gray-600">Gestiona tus restaurantes y menús desde aquí</p>
           <p className="text-sm text-green-600 mt-1">
-            🔄 Auto-sincronización activada - Los cambios se detectan automáticamente cada 10 segundos
+            {isOffline
+              ? "📱 Modo offline activado - Los datos se guardan localmente"
+              : "🔄 Auto-sincronización activada - Los cambios se detectan automáticamente cada 15 segundos"}
           </p>
 
           {/* Información de debug */}
@@ -354,7 +429,7 @@ export default function Dashboard() {
               <strong>API URL:</strong> {process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"}
             </p>
             <p>
-              <strong>Endpoint:</strong> /api.php?action=get-restaurants
+              <strong>Estado:</strong> {isOffline ? "Offline" : "Online"}
             </p>
             <button onClick={testConnection} className="mt-1 text-blue-500 hover:text-blue-600 underline">
               🔧 Probar conexión al servidor
@@ -384,10 +459,14 @@ export default function Dashboard() {
           </div>
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
-              <Settings className="w-8 h-8 text-blue-500 mr-3" />
+              {isOffline ? (
+                <WifiOff className="w-8 h-8 text-orange-500 mr-3" />
+              ) : (
+                <Settings className="w-8 h-8 text-blue-500 mr-3" />
+              )}
               <div>
-                <p className="text-sm text-gray-600">Email</p>
-                <p className="text-sm font-medium text-gray-900">{user?.email}</p>
+                <p className="text-sm text-gray-600">{isOffline ? "Modo" : "Email"}</p>
+                <p className="text-sm font-medium text-gray-900">{isOffline ? "Offline" : user?.email}</p>
               </div>
             </div>
           </div>
@@ -431,8 +510,10 @@ export default function Dashboard() {
                     {/* Indicador de sincronización */}
                     <div className="absolute top-2 right-2">
                       <div
-                        className={`w-2 h-2 rounded-full ${syncError ? "bg-red-400" : "bg-green-400 animate-pulse"}`}
-                        title={syncError ? "Error de sincronización" : "Sincronizado"}
+                        className={`w-2 h-2 rounded-full ${
+                          isOffline ? "bg-orange-400" : syncError ? "bg-red-400" : "bg-green-400 animate-pulse"
+                        }`}
+                        title={isOffline ? "Modo offline" : syncError ? "Error de sincronización" : "Sincronizado"}
                       ></div>
                     </div>
 
@@ -493,7 +574,10 @@ export default function Dashboard() {
         {showAddRestaurant && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 font-playfair">Agregar Nuevo Restaurante</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4 font-playfair">
+                Agregar Nuevo Restaurante
+                {isOffline && <span className="text-orange-500 text-sm ml-2">(Modo offline)</span>}
+              </h3>
 
               <form onSubmit={handleAddRestaurant} className="space-y-4">
                 <div>
@@ -571,7 +655,7 @@ export default function Dashboard() {
                     type="submit"
                     className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
                   >
-                    Agregar
+                    {isOffline ? "Agregar (offline)" : "Agregar"}
                   </button>
                 </div>
               </form>
