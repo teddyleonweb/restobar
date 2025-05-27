@@ -59,7 +59,7 @@ export default function Registro() {
 
     try {
       // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
       console.log("Intentando conectar a la API:", `${apiUrl}/api.php?action=register`)
 
       const response = await fetch(`${apiUrl}/api.php?action=register`, {

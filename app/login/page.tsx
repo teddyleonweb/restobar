@@ -38,7 +38,7 @@ export default function Login() {
 
     try {
       // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
       const fullUrl = `${apiUrl}/api.php?action=login`
 
       console.log("🔄 Intentando login...")
@@ -148,7 +148,7 @@ export default function Login() {
     try {
       setMessage({ type: "", text: "🔄 Probando conexión..." })
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
       const testUrl = `${apiUrl}/api.php?action=status`
 
       console.log("🧪 Probando conexión a:", testUrl)

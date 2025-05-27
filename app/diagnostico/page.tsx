@@ -92,7 +92,7 @@ export default function DiagnosticPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
-      const testUrl = `${apiUrl}/api.php`
+      const testUrl = `${apiUrl}/api.php?action=status`
 
       console.log("🧪 Probando URL:", testUrl)
 
@@ -171,9 +171,9 @@ export default function DiagnosticPage() {
     setTests([...newTests])
 
     const alternativeUrls = [
-      "https://tubarresto.somediave.com/api/api.php",
-      "https://tubarresto.somediave.com/wp-content/themes/tubarresto/api.php",
-      "https://tubarresto.somediave.com/api-updated-with-images.php",
+      "https://tubarresto.somediave.com/api.php?action=status",
+      "https://tubarresto.somediave.com/api/api.php?action=status",
+      "https://tubarresto.somediave.com/wp-content/themes/tubarresto/api.php?action=status",
     ]
 
     let foundWorking = false

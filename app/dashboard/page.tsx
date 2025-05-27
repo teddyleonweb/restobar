@@ -110,7 +110,7 @@ export default function Dashboard() {
 
     try {
       // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
       const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
         method: "POST",
@@ -162,7 +162,7 @@ export default function Dashboard() {
     })
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
       const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
         method: "POST",
@@ -221,7 +221,7 @@ export default function Dashboard() {
     const token = localStorage.getItem("tubarresto_token")
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
       console.log("Deleting restaurant:", restaurantToDelete.id)
 
