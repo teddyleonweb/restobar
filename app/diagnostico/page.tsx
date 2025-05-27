@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { buildApiUrl, apiEndpoints } from "@/lib/api-utils"
 
 interface TestResult {
   name: string
@@ -92,7 +93,7 @@ export default function DiagnosticPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
-      const testUrl = `${apiUrl}/api.php?action=status`
+      const testUrl = apiEndpoints.status()
 
       console.log("🧪 Probando URL:", testUrl)
 
@@ -171,9 +172,10 @@ export default function DiagnosticPage() {
     setTests([...newTests])
 
     const alternativeUrls = [
-      "https://tubarresto.somediave.com/api.php?action=status",
-      "https://tubarresto.somediave.com/api/api.php?action=status",
-      "https://tubarresto.somediave.com/wp-content/themes/tubarresto/api.php?action=status",
+      apiEndpoints.status(),
+      buildApiUrl("/api.php", { action: "status" }),
+      buildApiUrl("/wp-content/themes/tubarresto/api.php", { action: "status" }),
+      "http://tubarresto.somediave.com/api.php?action=status", // Versión HTTP como fallback
     ]
 
     let foundWorking = false
