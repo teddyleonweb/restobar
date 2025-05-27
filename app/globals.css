@@ -57,15 +57,15 @@ h6 {
     aspect-ratio: 1 / 1;
   }
 
-  .aspect-[16/9] {
+  .aspect-\[16\/9\] {
     aspect-ratio: 16 / 9;
   }
 
-  .aspect-[3/4] {
+  .aspect-\[3\/4\] {
     aspect-ratio: 3 / 4;
   }
 
-  .aspect-[4/3] {
+  .aspect-\[4\/3\] {
     aspect-ratio: 4 / 3;
   }
 
