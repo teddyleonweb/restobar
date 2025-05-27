@@ -1,91 +1,353 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import Link from "next/link"
-import { Plus, Store, ChefHat, QrCode, LogOut, Edit, Trash2, ExternalLink } from "lucide-react"
-import { authAPI, restaurantsAPI, dishesAPI, type Restaurant, type Dish, type User } from "@/lib/api"
+import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X } from "lucide-react"
+import ImageUpload from "@/components/image-upload"
+import RestaurantImageGallery from "@/components/restaurant-image-gallery"
+
+// Add this import at the top of the file
+import { toast } from "@/hooks/use-toast"
+
+interface UserType {
+  id: number
+  email: string
+  first_name: string
+  last_name: string
+  phone: string
+  status: string
+  email_verified: boolean
+}
+
+interface Restaurant {
+  id: number
+  name: string
+  slug: string
+  description?: string
+  address: string
+  city: string
+  phone?: string
+  email?: string
+  status: string
+  trial_start_date: string
+  trial_end_date: string
+  created_at: string
+  logo_url?: string
+  cover_image_url?: string
+  images?: RestaurantImage[]
+}
+
+interface RestaurantImage {
+  id: string
+  url: string
+  title: string
+  description?: string
+  isPrimary?: boolean
+  createdAt: string
+}
 
 export default function Dashboard() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserType | null>(null)
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
-  const [dishes, setDishes] = useState<Dish[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<"restaurants" | "dishes">("restaurants")
+  const [message, setMessage] = useState({ type: "", text: "" })
+  const [showAddRestaurant, setShowAddRestaurant] = useState(false)
+  const [newRestaurant, setNewRestaurant] = useState({
+    name: "",
+    description: "",
+    address: "",
+    city: "",
+    phone: "",
+    email: "",
+  })
+
+  const [showEditRestaurant, setShowEditRestaurant] = useState(false)
+  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null)
+
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
+  const [showImageGallery, setShowImageGallery] = useState(false)
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem("tubarresto_token")
+    // Verificar si el usuario está autenticado
     const userData = localStorage.getItem("tubarresto_user")
+    const token = localStorage.getItem("tubarresto_token")
+    const restaurantsData = localStorage.getItem("tubarresto_restaurants")
 
-    if (!token || !userData) {
+    if (!userData || !token) {
       router.push("/login")
       return
     }
 
     setUser(JSON.parse(userData))
-    loadData()
+    if (restaurantsData) {
+      setRestaurants(JSON.parse(restaurantsData))
+    }
+    setIsLoading(false)
   }, [router])
 
-  const loadData = async () => {
-    try {
-      const data = await authAPI.getUser()
-      setRestaurants(data.restaurants)
-      setDishes(data.dishes)
-    } catch (error) {
-      console.error("Error loading data:", error)
-      // Si hay error de autenticación, redirigir al login
-      if (error instanceof Error && error.message.includes("autorizado")) {
-        localStorage.removeItem("tubarresto_token")
-        localStorage.removeItem("tubarresto_user")
-        router.push("/login")
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handleLogout = () => {
-    localStorage.removeItem("tubarresto_token")
     localStorage.removeItem("tubarresto_user")
+    localStorage.removeItem("tubarresto_token")
+    localStorage.removeItem("tubarresto_restaurants")
     router.push("/")
   }
 
-  const handleDeleteRestaurant = async (id: number) => {
-    if (confirm("¿Estás seguro de que quieres eliminar este restaurante? Se eliminarán todos sus platos.")) {
-      try {
-        await restaurantsAPI.delete(id)
-        await loadData() // Recargar datos
-      } catch (error) {
-        alert("Error al eliminar restaurante")
+  const handleAddRestaurant = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!newRestaurant.name || !newRestaurant.address || !newRestaurant.city) {
+      setMessage({ type: "error", text: "Nombre, dirección y ciudad son requeridos" })
+      return
+    }
+
+    const token = localStorage.getItem("tubarresto_token")
+
+    try {
+      // Usar la variable de entorno centralizada
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+
+      const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(newRestaurant),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setRestaurants([result.data.restaurant, ...restaurants])
+        setNewRestaurant({
+          name: "",
+          description: "",
+          address: "",
+          city: "",
+          phone: "",
+          email: "",
+        })
+        setShowAddRestaurant(false)
+        setMessage({ type: "success", text: "Restaurante agregado exitosamente" })
+      } else {
+        setMessage({ type: "error", text: result.error || "Error al agregar restaurante" })
       }
+    } catch (error) {
+      setMessage({ type: "error", text: "Error de conexión" })
     }
   }
 
-  const handleDeleteDish = async (id: number) => {
-    if (confirm("¿Estás seguro de que quieres eliminar este plato?")) {
-      try {
-        await dishesAPI.delete(id)
-        await loadData() // Recargar datos
-      } catch (error) {
-        alert("Error al eliminar plato")
+  const handleEditRestaurant = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!editingRestaurant || !editingRestaurant.name || !editingRestaurant.address || !editingRestaurant.city) {
+      setMessage({ type: "error", text: "Nombre, dirección y ciudad son requeridos" })
+      return
+    }
+
+    const token = localStorage.getItem("tubarresto_token")
+
+    // Debug: Log the data being sent
+    console.log("Updating restaurant with data:", {
+      id: editingRestaurant.id,
+      name: editingRestaurant.name,
+      logo_url: editingRestaurant.logo_url,
+      cover_image_url: editingRestaurant.cover_image_url,
+    })
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+
+      const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: editingRestaurant.id,
+          name: editingRestaurant.name,
+          description: editingRestaurant.description,
+          address: editingRestaurant.address,
+          city: editingRestaurant.city,
+          phone: editingRestaurant.phone,
+          email: editingRestaurant.email,
+          logo_url: editingRestaurant.logo_url,
+          cover_image_url: editingRestaurant.cover_image_url,
+        }),
+      })
+
+      const result = await response.json()
+      console.log("Update restaurant result:", result)
+
+      if (result.success) {
+        // Actualizar la lista de restaurantes
+        const updatedRestaurants = restaurants.map((r) => (r.id === editingRestaurant.id ? result.data.restaurant : r))
+        setRestaurants(updatedRestaurants)
+        localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+
+        toast({
+          title: "Restaurante actualizado",
+          description: "La información del restaurante se ha actualizado correctamente.",
+        })
+
+        setShowEditRestaurant(false)
+        setEditingRestaurant(null)
+        setMessage({ type: "success", text: "Restaurante actualizado exitosamente" })
+      } else {
+        console.error("Update error:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo actualizar el restaurante.",
+          variant: "destructive",
+        })
+        setMessage({ type: "error", text: result.error || "Error al actualizar restaurante" })
       }
+    } catch (error) {
+      console.error("Network error:", error)
+      setMessage({ type: "error", text: "Error de conexión" })
     }
   }
 
-  const handleViewMenu = (qrCode: string) => {
-    // Abrir el menú en una nueva pestaña
-    const menuUrl = `/menu/${qrCode}`
-    window.open(menuUrl, "_blank")
+  const handleDeleteRestaurant = async () => {
+    if (!restaurantToDelete) return
+
+    const token = localStorage.getItem("tubarresto_token")
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+
+      console.log("Deleting restaurant:", restaurantToDelete.id)
+
+      const response = await fetch(`${apiUrl}/api.php?action=delete-restaurant`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: restaurantToDelete.id,
+        }),
+      })
+
+      console.log("Delete response status:", response.status)
+      console.log("Delete response headers:", response.headers)
+
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // Get response text first to debug
+      const responseText = await response.text()
+      console.log("Delete response text:", responseText)
+
+      // Try to parse as JSON
+      let result
+      try {
+        result = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError)
+        console.error("Response text:", responseText)
+        throw new Error("Invalid JSON response from server")
+      }
+
+      console.log("Delete restaurant result:", result)
+
+      if (result.success) {
+        // Actualizar la lista de restaurantes
+        const updatedRestaurants = restaurants.filter((r) => r.id !== restaurantToDelete.id)
+        setRestaurants(updatedRestaurants)
+        localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+
+        toast({
+          title: "Restaurante eliminado",
+          description: "El restaurante se ha eliminado correctamente.",
+        })
+
+        setShowDeleteConfirm(false)
+        setRestaurantToDelete(null)
+        setMessage({ type: "success", text: "Restaurante eliminado exitosamente" })
+      } else {
+        console.error("Delete error:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo eliminar el restaurante.",
+          variant: "destructive",
+        })
+        setMessage({ type: "error", text: result.error || "Error al eliminar restaurante" })
+      }
+    } catch (error) {
+      console.error("Network error:", error)
+
+      let errorMessage = "Error de conexión"
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      toast({
+        title: "Error de conexión",
+        description: errorMessage,
+        variant: "destructive",
+      })
+      setMessage({ type: "error", text: errorMessage })
+    }
+  }
+
+  const openDeleteConfirm = (restaurant: Restaurant) => {
+    setRestaurantToDelete(restaurant)
+    setShowDeleteConfirm(true)
+  }
+
+  const openEditModal = (restaurant: Restaurant) => {
+    console.log("Opening edit modal for restaurant:", restaurant)
+    setEditingRestaurant({ ...restaurant })
+    setShowEditRestaurant(true)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("es-ES", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  const getDaysRemaining = (endDate: string) => {
+    const end = new Date(endDate)
+    const now = new Date()
+    const diffTime = end.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+
+  const handleRestaurantImagesChange = (images: RestaurantImage[]) => {
+    if (selectedRestaurant) {
+      const updatedRestaurant = { ...selectedRestaurant, images }
+      const updatedRestaurants = restaurants.map((r) => (r.id === selectedRestaurant.id ? updatedRestaurant : r))
+      setRestaurants(updatedRestaurants)
+      setSelectedRestaurant(updatedRestaurant)
+      localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+    }
+  }
+
+  const openImageGallery = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant)
+    setShowImageGallery(true)
   }
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-red-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p>Cargando...</p>
         </div>
       </div>
     )
@@ -94,8 +356,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 font-lato">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="bg-white shadow">
+        <div className="container mx-auto px-4">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
               <Image
@@ -108,246 +370,519 @@ export default function Dashboard() {
               />
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700">Hola, {user?.name}</span>
+              <div className="flex items-center text-gray-700">
+                <User className="w-5 h-5 mr-2" />
+                <span>
+                  {user?.first_name} {user?.last_name}
+                </span>
+              </div>
               <button
                 onClick={handleLogout}
-                className="flex items-center text-gray-500 hover:text-red-500 transition-colors"
+                className="flex items-center text-gray-700 hover:text-red-500 transition-colors"
               >
                 <LogOut className="w-5 h-5 mr-1" />
-                Salir
+                <span>Cerrar sesión</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+      <main className="container mx-auto px-4 py-8">
+        {/* Mensaje */}
+        {message.text && (
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              message.type === "success"
+                ? "bg-green-100 text-green-700 border border-green-300"
+                : "bg-red-100 text-red-700 border border-red-300"
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        {/* Bienvenida */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2 font-playfair">¡Hola, {user?.first_name}!</h1>
+          <p className="text-gray-600">Gestiona tus restaurantes y menús desde aquí</p>
+        </div>
+
+        {/* Estadísticas rápidas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <Store className="w-6 h-6 text-red-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Restaurantes</p>
-                <p className="text-2xl font-semibold text-gray-900">{restaurants.length}</p>
+              <Store className="w-8 h-8 text-red-500 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Restaurantes</p>
+                <p className="text-2xl font-bold text-gray-900">{restaurants.length}</p>
               </div>
             </div>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <ChefHat className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Platos</p>
-                <p className="text-2xl font-semibold text-gray-900">{dishes.length}</p>
+              <Calendar className="w-8 h-8 text-green-500 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Estado</p>
+                <p className="text-lg font-semibold text-green-600">Periodo de prueba</p>
               </div>
             </div>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <QrCode className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Códigos QR</p>
-                <p className="text-2xl font-semibold text-gray-900">{restaurants.filter((r) => r.is_active).length}</p>
+              <Settings className="w-8 h-8 text-blue-500 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="text-sm font-medium text-gray-900">{user?.email}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Restaurantes */}
         <div className="bg-white rounded-lg shadow">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900 font-playfair">Mis Restaurantes</h2>
               <button
-                onClick={() => setActiveTab("restaurants")}
-                className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                  activeTab === "restaurants"
-                    ? "border-red-500 text-red-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
+                onClick={() => setShowAddRestaurant(true)}
+                className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
               >
-                <Store className="w-5 h-5 inline mr-2" />
-                Restaurantes
+                <Plus className="w-5 h-5 mr-2" />
+                Agregar Restaurante
               </button>
-              <button
-                onClick={() => setActiveTab("dishes")}
-                className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                  activeTab === "dishes"
-                    ? "border-red-500 text-red-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                <ChefHat className="w-5 h-5 inline mr-2" />
-                Platos
-              </button>
-            </nav>
+            </div>
           </div>
 
           <div className="p-6">
-            {activeTab === "restaurants" && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">Mis Restaurantes</h2>
-                  <Link
-                    href="/dashboard/restaurants/new"
-                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Nuevo Restaurante
-                  </Link>
-                </div>
-
-                {restaurants.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Store className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No tienes restaurantes</h3>
-                    <p className="text-gray-500 mb-4">Crea tu primer restaurante para comenzar</p>
-                    <Link
-                      href="/dashboard/restaurants/new"
-                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg inline-flex items-center"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Crear Restaurante
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {restaurants.map((restaurant) => (
-                      <div key={restaurant.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                        {restaurant.logo && (
-                          <img
-                            src={restaurant.logo || "/placeholder.svg"}
-                            alt={restaurant.name}
-                            className="w-full h-32 object-cover rounded-lg mb-4"
-                          />
-                        )}
-                        <h3 className="font-semibold text-lg mb-2">{restaurant.name}</h3>
-                        <p className="text-gray-600 text-sm mb-2">
-                          {restaurant.address}, {restaurant.city}
-                        </p>
-                        <div className="flex items-center justify-between mb-3">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              restaurant.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {restaurant.is_active ? "Activo" : "Inactivo"}
-                          </span>
-                          <span className="text-xs text-gray-500">QR: {restaurant.qr_code}</span>
-                        </div>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleViewMenu(restaurant.qr_code)}
-                            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded flex items-center justify-center transition-colors"
-                            title="Ver menú público"
-                          >
-                            <ExternalLink className="w-4 h-4 mr-1" />
-                            Ver Menú
-                          </button>
-                          <button
-                            onClick={() => router.push(`/dashboard/restaurants/${restaurant.id}/edit`)}
-                            className="bg-gray-500 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded flex items-center justify-center transition-colors"
-                            title="Editar"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteRestaurant(restaurant.id)}
-                            className="bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-3 rounded flex items-center justify-center transition-colors"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {restaurants.length === 0 ? (
+              <div className="text-center py-12">
+                <Store className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No tienes restaurantes aún</h3>
+                <p className="text-gray-600 mb-4">Agrega tu primer restaurante para comenzar</p>
+                <button
+                  onClick={() => setShowAddRestaurant(true)}
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors"
+                >
+                  Agregar Restaurante
+                </button>
               </div>
-            )}
-
-            {activeTab === "dishes" && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">Mis Platos</h2>
-                  <Link
-                    href="/dashboard/dishes/new"
-                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {restaurants.map((restaurant) => (
+                  <div
+                    key={restaurant.id}
+                    className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Nuevo Plato
-                  </Link>
-                </div>
+                    {/* Restaurant header with logo */}
+                    <div className="relative h-32 bg-gradient-to-r from-red-500 to-red-600">
+                      {restaurant.cover_image_url && (
+                        <Image
+                          src={restaurant.cover_image_url || "/placeholder.svg"}
+                          alt={`${restaurant.name} cover`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black bg-opacity-20"></div>
 
-                {dishes.length === 0 ? (
-                  <div className="text-center py-12">
-                    <ChefHat className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No tienes platos</h3>
-                    <p className="text-gray-500 mb-4">Agrega platos a tus restaurantes</p>
-                    <Link
-                      href="/dashboard/dishes/new"
-                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg inline-flex items-center"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar Plato
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {dishes.map((dish) => (
-                      <div key={dish.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                        {dish.image && (
-                          <img
-                            src={dish.image || "/placeholder.svg"}
-                            alt={dish.name}
-                            className="w-full h-32 object-cover rounded-lg mb-4"
-                          />
-                        )}
-                        <h3 className="font-semibold text-lg mb-2">{dish.name}</h3>
-                        <p className="text-gray-600 text-sm mb-2">{dish.description}</p>
-                        <p className="text-red-600 font-semibold mb-2">${dish.price}</p>
-                        <p className="text-gray-500 text-xs mb-2">{dish.restaurantName}</p>
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              dish.is_available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {dish.is_available ? "Disponible" : "No disponible"}
-                          </span>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => router.push(`/dashboard/dishes/${dish.id}/edit`)}
-                              className="text-gray-600 hover:text-gray-800"
-                              title="Editar"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDish(dish.id)}
-                              className="text-red-600 hover:text-red-800"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                      {/* Logo */}
+                      {restaurant.logo_url && (
+                        <div className="absolute bottom-4 left-4 w-16 h-16 bg-white rounded-full p-1 shadow-lg">
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={restaurant.logo_url || "/placeholder.svg"}
+                              alt={`${restaurant.name} logo`}
+                              fill
+                              className="object-cover rounded-full"
+                              sizes="64px"
+                            />
                           </div>
                         </div>
+                      )}
+                    </div>
+
+                    <div className="p-6">
+                      <div className="mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{restaurant.name}</h3>
+                        {restaurant.description && (
+                          <p className="text-gray-600 text-sm mb-3">{restaurant.description}</p>
+                        )}
                       </div>
-                    ))}
+
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <MapPin className="w-4 h-4 mr-2" />
+                          <span>
+                            {restaurant.address}, {restaurant.city}
+                          </span>
+                        </div>
+                        {restaurant.phone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-2" />
+                            <span>{restaurant.phone}</span>
+                          </div>
+                        )}
+                        {restaurant.email && (
+                          <div className="flex items-center">
+                            <Mail className="w-4 h-4 mr-2" />
+                            <span>{restaurant.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              restaurant.status === "trial"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : restaurant.status === "active"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {restaurant.status === "trial" ? "Prueba" : restaurant.status}
+                          </span>
+                          {restaurant.status === "trial" && (
+                            <span className="text-xs text-gray-500">
+                              {getDaysRemaining(restaurant.trial_end_date)} días restantes
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => openEditModal(restaurant)}
+                            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Editar Información
+                          </button>
+                          <button
+                            onClick={() => openImageGallery(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Gestionar Imágenes
+                          </button>
+                          <button
+                            onClick={() => openDeleteConfirm(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm border border-red-300"
+                          >
+                            Eliminar Restaurante
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>
         </div>
-      </div>
+
+        {/* Modal para agregar restaurante */}
+        {showAddRestaurant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 font-playfair">Agregar Nuevo Restaurante</h3>
+
+              <form onSubmit={handleAddRestaurant} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del restaurante *</label>
+                  <input
+                    type="text"
+                    value={newRestaurant.name}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                  <textarea
+                    value={newRestaurant.description}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dirección *</label>
+                  <input
+                    type="text"
+                    value={newRestaurant.address}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, address: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad *</label>
+                  <input
+                    type="text"
+                    value={newRestaurant.city}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={newRestaurant.phone}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newRestaurant.email}
+                    onChange={(e) => setNewRestaurant({ ...newRestaurant, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRestaurant(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                  >
+                    Agregar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para editar restaurante */}
+        {showEditRestaurant && editingRestaurant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-lg font-bold text-gray-900 font-playfair">Editar Restaurante</h3>
+                <button
+                  onClick={() => {
+                    setShowEditRestaurant(false)
+                    setEditingRestaurant(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                <form onSubmit={handleEditRestaurant} className="p-6 space-y-6">
+                  {/* Información básica */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Información Básica</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                        <input
+                          type="text"
+                          value={editingRestaurant.name}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, name: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad *</label>
+                        <input
+                          type="text"
+                          value={editingRestaurant.city}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, city: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Dirección *</label>
+                      <input
+                        type="text"
+                        value={editingRestaurant.address}
+                        onChange={(e) => setEditingRestaurant({ ...editingRestaurant, address: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                      <textarea
+                        value={editingRestaurant.description || ""}
+                        onChange={(e) => setEditingRestaurant({ ...editingRestaurant, description: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                        <input
+                          type="tel"
+                          value={editingRestaurant.phone || ""}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, phone: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={editingRestaurant.email || ""}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, email: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Imágenes */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Imágenes</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <ImageUpload
+                          currentImage={editingRestaurant.logo_url}
+                          onImageChange={(url) => setEditingRestaurant({ ...editingRestaurant, logo_url: url })}
+                          label="Logo del Restaurante"
+                          aspectRatio="square"
+                          placeholder="Logo cuadrado recomendado"
+                          restaurantId={editingRestaurant.id}
+                        />
+                      </div>
+
+                      <div>
+                        <ImageUpload
+                          currentImage={editingRestaurant.cover_image_url}
+                          onImageChange={(url) => setEditingRestaurant({ ...editingRestaurant, cover_image_url: url })}
+                          label="Imagen de Portada"
+                          aspectRatio="wide"
+                          placeholder="Imagen panorámica del restaurante"
+                          restaurantId={editingRestaurant.id}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="flex space-x-3 p-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditRestaurant(false)
+                    setEditingRestaurant(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleEditRestaurant}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors text-sm"
+                >
+                  Actualizar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Gallery Modal */}
+        {showImageGallery && selectedRestaurant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Imágenes de {selectedRestaurant.name}</h3>
+                  <p className="text-sm text-gray-600">Gestiona el logo, fotos y otras imágenes de tu restaurante</p>
+                </div>
+                <button onClick={() => setShowImageGallery(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <RestaurantImageGallery
+                  restaurantId={selectedRestaurant.id}
+                  images={selectedRestaurant.images || []}
+                  onImagesChange={handleRestaurantImagesChange}
+                  canEdit={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de eliminación */}
+        {showDeleteConfirm && restaurantToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Confirmar Eliminación</h3>
+
+              <div className="mb-6">
+                <p className="text-gray-600 mb-2">¿Estás seguro de que deseas eliminar el restaurante?</p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="font-semibold text-red-800">{restaurantToDelete.name}</p>
+                  <p className="text-sm text-red-600">
+                    {restaurantToDelete.address}, {restaurantToDelete.city}
+                  </p>
+                </div>
+                <p className="text-sm text-red-600 mt-3">
+                  <strong>Esta acción no se puede deshacer.</strong> Se eliminarán todos los datos asociados al
+                  restaurante.
+                </p>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setRestaurantToDelete(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteRestaurant}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   )
 }
