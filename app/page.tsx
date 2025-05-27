@@ -75,16 +75,6 @@ export default function Home() {
                 <LogIn className="w-5 h-5 mr-1 icon-hover-effect" />
                 <span>Iniciar sesión</span>
               </Link>
-
-              {process.env.NODE_ENV === "development" && (
-                <Link
-                  href="/test-api"
-                  className="flex items-center text-gray-700 hover:text-blue-500 transition-colors duration-300 animate-fade-in animate-delay-200"
-                >
-                  <span className="text-sm">🧪 Test API</span>
-                </Link>
-              )}
-
               <div className="flex items-center space-x-4 animate-fade-in animate-delay-300">
                 <Link
                   href="#"
