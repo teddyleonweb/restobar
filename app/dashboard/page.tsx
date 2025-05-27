@@ -10,6 +10,7 @@ import RestaurantImageGallery from "@/components/restaurant-image-gallery"
 
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
+import { getApiUrl } from "@/lib/api-config"
 
 interface UserType {
   id: number
@@ -109,10 +110,11 @@ export default function Dashboard() {
     const token = localStorage.getItem("tubarresto_token")
 
     try {
-      // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
+      // Replace this line:
+      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
-      const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
+      // const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
+      const response = await fetch(getApiUrl("ADD_RESTAURANT"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -162,9 +164,11 @@ export default function Dashboard() {
     })
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
+      // Replace this line:
+      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
-      const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
+      // const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
+      const response = await fetch(getApiUrl("UPDATE_RESTAURANT"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -221,11 +225,11 @@ export default function Dashboard() {
     const token = localStorage.getItem("tubarresto_token")
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
+      // Replace this line:
+      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
 
-      console.log("Deleting restaurant:", restaurantToDelete.id)
-
-      const response = await fetch(`${apiUrl}/api.php?action=delete-restaurant`, {
+      // const response = await fetch(`${apiUrl}/api.php?action=delete-restaurant`, {
+      const response = await fetch(getApiUrl("DELETE_RESTAURANT"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

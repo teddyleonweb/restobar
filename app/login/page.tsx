@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Facebook, Instagram, Twitter, ArrowLeft, Eye, EyeOff } from "lucide-react"
+import { getApiUrl } from "@/lib/api-config"
 
 export default function Login() {
   const router = useRouter()
@@ -38,8 +39,7 @@ export default function Login() {
 
     try {
       // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-      const fullUrl = `${apiUrl}/api.php?action=login`
+      const fullUrl = getApiUrl("LOGIN")
 
       console.log("🔄 Intentando login...")
       console.log("📍 URL:", fullUrl)
@@ -148,8 +148,7 @@ export default function Login() {
     try {
       setMessage({ type: "", text: "🔄 Probando conexión..." })
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-      const testUrl = `${apiUrl}/api.php?action=status`
+      const testUrl = getApiUrl("STATUS")
 
       console.log("🧪 Probando conexión a:", testUrl)
 
@@ -376,7 +375,7 @@ export default function Login() {
             {/* Información de debug */}
             <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
               <p>
-                <strong>API URL:</strong> {process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"}
+                <strong>API URL:</strong> {getApiUrl("LOGIN")}
               </p>
               <p>
                 <strong>Endpoint:</strong> /api.php?action=login

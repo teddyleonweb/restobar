@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useRef } from "react"
 import Image from "next/image"
 import { Upload, X, Camera, Loader2, AlertCircle } from "lucide-react"
+import { getApiUrl } from "@/lib/api-config"
 
 interface ImageUploadProps {
   currentImage?: string
@@ -81,9 +82,7 @@ export default function ImageUpload({
     }, 200)
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
-
-      const response = await fetch(`${apiUrl}/api-updated-with-images.php?action=upload-image`, {
+      const response = await fetch(getApiUrl("UPLOAD_IMAGE"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
