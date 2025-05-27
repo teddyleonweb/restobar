@@ -383,6 +383,82 @@ switch ($action) {
         ], 201);
         break;
     
+    // ACTUALIZAR RESTAURANTE
+    case 'update-restaurant':
+        if ($method !== 'POST') {
+            send_error('Método no permitido', 405);
+        }
+        
+        // Verificar autenticación
+        $user_data = verify_token($token);
+        if (!$user_data) {
+            send_error('No autorizado', 401);
+        }
+        
+        // Validar campos requeridos
+        if (empty($data['id']) || empty($data['name']) || empty($data['address']) || empty($data['city'])) {
+            send_error('ID, nombre, dirección y ciudad son requeridos');
+        }
+        
+        // Verificar que el restaurante pertenece al usuario
+        global $wpdb;
+        $restaurant = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM kvq_tubarresto_restaurants WHERE id = %d AND user_id = %d",
+            $data['id'],
+            $user_data['id']
+        ));
+        
+        if (!$restaurant) {
+            send_error('Restaurante no encontrado o no autorizado', 404);
+        }
+        
+        // Actualizar restaurante
+        $result = $wpdb->update(
+            'kvq_tubarresto_restaurants',
+            [
+                'name' => $data['name'],
+                'description' => isset($data['description']) ? $data['description'] : null,
+                'address' => $data['address'],
+                'city' => $data['city'],
+                'phone' => isset($data['phone']) ? $data['phone'] : null,
+                'email' => isset($data['email']) ? $data['email'] : null,
+                'updated_at' => current_time('mysql')
+            ],
+            ['id' => $data['id']],
+            ['%s', '%s', '%s', '%s', '%s', '%s', '%s'],
+            ['%d']
+        );
+        
+        if ($result === false) {
+            send_error('Error al actualizar restaurante', 500);
+        }
+        
+        // Obtener el restaurante actualizado
+        $updated_restaurant = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM kvq_tubarresto_restaurants WHERE id = %d",
+            $data['id']
+        ));
+        
+        send_success([
+            'message' => 'Restaurante actualizado exitosamente',
+            'restaurant' => [
+                'id' => $updated_restaurant->id,
+                'name' => $updated_restaurant->name,
+                'slug' => $updated_restaurant->slug,
+                'description' => $updated_restaurant->description,
+                'address' => $updated_restaurant->address,
+                'city' => $updated_restaurant->city,
+                'phone' => $updated_restaurant->phone,
+                'email' => $updated_restaurant->email,
+                'status' => $updated_restaurant->status,
+                'trial_start_date' => $updated_restaurant->trial_start_date,
+                'trial_end_date' => $updated_restaurant->trial_end_date,
+                'created_at' => $updated_restaurant->created_at,
+                'updated_at' => $updated_restaurant->updated_at
+            ]
+        ]);
+        break;
+    
     // OBTENER RESTAURANTES DEL USUARIO
     case 'get-restaurants':
         if ($method !== 'GET') {

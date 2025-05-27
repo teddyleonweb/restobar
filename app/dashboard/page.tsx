@@ -1,25 +1,15 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import {
-  LogOut,
-  Plus,
-  MapPin,
-  Phone,
-  Mail,
-  Calendar,
-  Store,
-  User,
-  Settings,
-  AlertCircle,
-  Wifi,
-  WifiOff,
-} from "lucide-react"
-import { useDataSync } from "@/hooks/useDataSync"
-import { useStorageSync } from "@/hooks/useStorageSync"
+import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X } from "lucide-react"
+import ImageUpload from "@/components/image-upload"
+import RestaurantImageGallery from "@/components/restaurant-image-gallery"
+
+// Add this import at the top of the file
+import { toast } from "@/hooks/use-toast"
 
 interface UserType {
   id: number
@@ -44,11 +34,24 @@ interface Restaurant {
   trial_start_date: string
   trial_end_date: string
   created_at: string
+  logo_url?: string
+  cover_image_url?: string
+  images?: RestaurantImage[]
+}
+
+interface RestaurantImage {
+  id: string
+  url: string
+  title: string
+  description?: string
+  isPrimary?: boolean
+  createdAt: string
 }
 
 export default function Dashboard() {
   const router = useRouter()
   const [user, setUser] = useState<UserType | null>(null)
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState({ type: "", text: "" })
   const [showAddRestaurant, setShowAddRestaurant] = useState(false)
@@ -61,55 +64,20 @@ export default function Dashboard() {
     email: "",
   })
 
-  // Callback para manejar cambios en restaurantes
-  const handleRestaurantsChange = useCallback((newData: Restaurant[], oldData: Restaurant[] | null) => {
-    if (oldData && newData.length !== oldData.length) {
-      const isNew = newData.length > oldData.length
-      setMessage({
-        type: "success",
-        text: isNew ? "🆕 Nuevo restaurante agregado" : "🗑️ Restaurante eliminado",
-      })
+  const [showEditRestaurant, setShowEditRestaurant] = useState(false)
+  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null)
 
-      // Limpiar mensaje después de 3 segundos
-      setTimeout(() => setMessage({ type: "", text: "" }), 3000)
-    }
-  }, [])
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
+  const [showImageGallery, setShowImageGallery] = useState(false)
 
-  // Hook para sincronización con localStorage
-  const { data: restaurants, updateData: updateRestaurants } = useStorageSync<Restaurant[]>({
-    key: "tubarresto_restaurants",
-    onDataChange: handleRestaurantsChange,
-  })
-
-  // Callback para manejar datos del servidor
-  const handleServerDataChange = useCallback(
-    (newData: { restaurants: Restaurant[] }, oldData: { restaurants: Restaurant[] } | null) => {
-      if (newData.restaurants) {
-        updateRestaurants(newData.restaurants)
-      }
-    },
-    [updateRestaurants],
-  )
-
-  // Auto-sync con fallback a datos locales
-  const {
-    lastUpdate,
-    error: syncError,
-    isOffline,
-    forceRefresh,
-    goOffline,
-  } = useDataSync<{ restaurants: Restaurant[] }>({
-    endpoint: "get-restaurants",
-    interval: 15000, // 15 segundos para reducir carga
-    onDataChange: handleServerDataChange,
-    enabled: !!user,
-    fallbackToLocal: true,
-  })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
 
   useEffect(() => {
-    // Verificar autenticación
+    // Verificar si el usuario está autenticado
     const userData = localStorage.getItem("tubarresto_user")
     const token = localStorage.getItem("tubarresto_token")
+    const restaurantsData = localStorage.getItem("tubarresto_restaurants")
 
     if (!userData || !token) {
       router.push("/login")
@@ -117,12 +85,10 @@ export default function Dashboard() {
     }
 
     setUser(JSON.parse(userData))
-    setIsLoading(false)
-
-    // Solicitar permisos de notificación
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission()
+    if (restaurantsData) {
+      setRestaurants(JSON.parse(restaurantsData))
     }
+    setIsLoading(false)
   }, [router])
 
   const handleLogout = () => {
@@ -140,45 +106,10 @@ export default function Dashboard() {
       return
     }
 
-    // Si estamos offline, agregar solo localmente
-    if (isOffline) {
-      const newRestaurantData: Restaurant = {
-        id: Date.now(), // ID temporal
-        name: newRestaurant.name,
-        slug: newRestaurant.name.toLowerCase().replace(/\s+/g, "-"),
-        description: newRestaurant.description,
-        address: newRestaurant.address,
-        city: newRestaurant.city,
-        phone: newRestaurant.phone,
-        email: newRestaurant.email,
-        status: "trial",
-        trial_start_date: new Date().toISOString(),
-        trial_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        created_at: new Date().toISOString(),
-      }
-
-      const currentRestaurants = restaurants || []
-      updateRestaurants([newRestaurantData, ...currentRestaurants])
-
-      setNewRestaurant({
-        name: "",
-        description: "",
-        address: "",
-        city: "",
-        phone: "",
-        email: "",
-      })
-      setShowAddRestaurant(false)
-      setMessage({
-        type: "success",
-        text: "✅ Restaurante agregado localmente (se sincronizará cuando vuelva la conexión)",
-      })
-      return
-    }
-
     const token = localStorage.getItem("tubarresto_token")
 
     try {
+      // Usar la variable de entorno centralizada
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
 
       const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
@@ -193,11 +124,7 @@ export default function Dashboard() {
       const result = await response.json()
 
       if (result.success) {
-        const newRestaurantData = result.data.restaurant
-        const currentRestaurants = restaurants || []
-
-        updateRestaurants([newRestaurantData, ...currentRestaurants])
-
+        setRestaurants([result.data.restaurant, ...restaurants])
         setNewRestaurant({
           name: "",
           description: "",
@@ -207,74 +134,181 @@ export default function Dashboard() {
           email: "",
         })
         setShowAddRestaurant(false)
-        setMessage({ type: "success", text: "✅ Restaurante agregado exitosamente" })
-
-        setTimeout(() => forceRefresh(), 1000)
+        setMessage({ type: "success", text: "Restaurante agregado exitosamente" })
       } else {
         setMessage({ type: "error", text: result.error || "Error al agregar restaurante" })
       }
     } catch (error) {
-      setMessage({ type: "error", text: "Error de conexión. Trabajando en modo offline." })
-      goOffline()
+      setMessage({ type: "error", text: "Error de conexión" })
     }
   }
 
-  // Función para probar la conexión
-  const testConnection = async () => {
+  const handleEditRestaurant = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!editingRestaurant || !editingRestaurant.name || !editingRestaurant.address || !editingRestaurant.city) {
+      setMessage({ type: "error", text: "Nombre, dirección y ciudad son requeridos" })
+      return
+    }
+
+    const token = localStorage.getItem("tubarresto_token")
+
+    // Debug: Log the data being sent
+    console.log("Updating restaurant with data:", {
+      id: editingRestaurant.id,
+      name: editingRestaurant.name,
+      logo_url: editingRestaurant.logo_url,
+      cover_image_url: editingRestaurant.cover_image_url,
+    })
+
     try {
-      setMessage({ type: "info", text: "🔄 Probando conexión..." })
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
-      const testUrl = `${apiUrl}/api.php?action=status`
 
-      console.log("🧪 Probando conexión a:", testUrl)
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000)
-
-      const response = await fetch(testUrl, {
-        method: "GET",
-        mode: "cors",
+      const response = await fetch(`${apiUrl}/api-updated-with-images.php?action=update-restaurant`, {
+        method: "POST",
         headers: {
-          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        signal: controller.signal,
+        body: JSON.stringify({
+          id: editingRestaurant.id,
+          name: editingRestaurant.name,
+          description: editingRestaurant.description,
+          address: editingRestaurant.address,
+          city: editingRestaurant.city,
+          phone: editingRestaurant.phone,
+          email: editingRestaurant.email,
+          logo_url: editingRestaurant.logo_url,
+          cover_image_url: editingRestaurant.cover_image_url,
+        }),
       })
 
-      clearTimeout(timeoutId)
+      const result = await response.json()
+      console.log("Update restaurant result:", result)
 
-      console.log("📊 Test - Status:", response.status)
+      if (result.success) {
+        // Actualizar la lista de restaurantes
+        const updatedRestaurants = restaurants.map((r) => (r.id === editingRestaurant.id ? result.data.restaurant : r))
+        setRestaurants(updatedRestaurants)
+        localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
 
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success) {
-          setMessage({
-            type: "success",
-            text: `✅ API funcionando. DB: ${result.data.database.users_count} usuarios, ${result.data.database.restaurants_count} restaurantes`,
-          })
-        } else {
-          setMessage({ type: "error", text: `❌ Error API: ${result.error}` })
-        }
-      } else {
-        setMessage({
-          type: "error",
-          text: `❌ Error HTTP ${response.status}: ${response.statusText}`,
+        toast({
+          title: "Restaurante actualizado",
+          description: "La información del restaurante se ha actualizado correctamente.",
         })
+
+        setShowEditRestaurant(false)
+        setEditingRestaurant(null)
+        setMessage({ type: "success", text: "Restaurante actualizado exitosamente" })
+      } else {
+        console.error("Update error:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo actualizar el restaurante.",
+          variant: "destructive",
+        })
+        setMessage({ type: "error", text: result.error || "Error al actualizar restaurante" })
       }
     } catch (error) {
-      console.error("💥 Error test conexión:", error)
-      if (error instanceof Error && error.name === "AbortError") {
-        setMessage({
-          type: "error",
-          text: "❌ Timeout: El servidor no responde",
-        })
-      } else {
-        setMessage({
-          type: "error",
-          text: "❌ No se puede conectar. Trabajando en modo offline.",
-        })
-      }
+      console.error("Network error:", error)
+      setMessage({ type: "error", text: "Error de conexión" })
     }
+  }
+
+  const handleDeleteRestaurant = async () => {
+    if (!restaurantToDelete) return
+
+    const token = localStorage.getItem("tubarresto_token")
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
+
+      console.log("Deleting restaurant:", restaurantToDelete.id)
+
+      const response = await fetch(`${apiUrl}/api-updated-with-images.php?action=delete-restaurant`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: restaurantToDelete.id,
+        }),
+      })
+
+      console.log("Delete response status:", response.status)
+      console.log("Delete response headers:", response.headers)
+
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // Get response text first to debug
+      const responseText = await response.text()
+      console.log("Delete response text:", responseText)
+
+      // Try to parse as JSON
+      let result
+      try {
+        result = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError)
+        console.error("Response text:", responseText)
+        throw new Error("Invalid JSON response from server")
+      }
+
+      console.log("Delete restaurant result:", result)
+
+      if (result.success) {
+        // Actualizar la lista de restaurantes
+        const updatedRestaurants = restaurants.filter((r) => r.id !== restaurantToDelete.id)
+        setRestaurants(updatedRestaurants)
+        localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+
+        toast({
+          title: "Restaurante eliminado",
+          description: "El restaurante se ha eliminado correctamente.",
+        })
+
+        setShowDeleteConfirm(false)
+        setRestaurantToDelete(null)
+        setMessage({ type: "success", text: "Restaurante eliminado exitosamente" })
+      } else {
+        console.error("Delete error:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo eliminar el restaurante.",
+          variant: "destructive",
+        })
+        setMessage({ type: "error", text: result.error || "Error al eliminar restaurante" })
+      }
+    } catch (error) {
+      console.error("Network error:", error)
+
+      let errorMessage = "Error de conexión"
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      toast({
+        title: "Error de conexión",
+        description: errorMessage,
+        variant: "destructive",
+      })
+      setMessage({ type: "error", text: errorMessage })
+    }
+  }
+
+  const openDeleteConfirm = (restaurant: Restaurant) => {
+    setRestaurantToDelete(restaurant)
+    setShowDeleteConfirm(true)
+  }
+
+  const openEditModal = (restaurant: Restaurant) => {
+    console.log("Opening edit modal for restaurant:", restaurant)
+    setEditingRestaurant({ ...restaurant })
+    setShowEditRestaurant(true)
   }
 
   const formatDate = (dateString: string) => {
@@ -291,6 +325,21 @@ export default function Dashboard() {
     const diffTime = end.getTime() - now.getTime()
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     return diffDays
+  }
+
+  const handleRestaurantImagesChange = (images: RestaurantImage[]) => {
+    if (selectedRestaurant) {
+      const updatedRestaurant = { ...selectedRestaurant, images }
+      const updatedRestaurants = restaurants.map((r) => (r.id === selectedRestaurant.id ? updatedRestaurant : r))
+      setRestaurants(updatedRestaurants)
+      setSelectedRestaurant(updatedRestaurant)
+      localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+    }
+  }
+
+  const openImageGallery = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant)
+    setShowImageGallery(true)
   }
 
   if (isLoading) {
@@ -321,38 +370,6 @@ export default function Dashboard() {
               />
             </div>
             <div className="flex items-center space-x-4">
-              {/* Indicador de conexión */}
-              <div className="flex items-center text-sm text-gray-500">
-                {isOffline ? (
-                  <WifiOff className="w-4 h-4 mr-1 text-orange-500" />
-                ) : (
-                  <Wifi className="w-4 h-4 mr-1 text-green-500" />
-                )}
-                <span className="hidden sm:inline">
-                  {isOffline
-                    ? "Modo offline"
-                    : lastUpdate
-                      ? `Actualizado: ${lastUpdate.toLocaleTimeString()}`
-                      : "Sincronizando..."}
-                </span>
-                <button
-                  onClick={forceRefresh}
-                  className="ml-2 text-blue-500 hover:text-blue-600"
-                  title="Actualizar ahora"
-                >
-                  🔄
-                </button>
-                {syncError && (
-                  <button
-                    onClick={testConnection}
-                    className="ml-2 text-red-500 hover:text-red-600"
-                    title={`Error: ${syncError}`}
-                  >
-                    <AlertCircle className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
               <div className="flex items-center text-gray-700">
                 <User className="w-5 h-5 mr-2" />
                 <span>
@@ -378,38 +395,10 @@ export default function Dashboard() {
             className={`mb-6 p-4 rounded-lg ${
               message.type === "success"
                 ? "bg-green-100 text-green-700 border border-green-300"
-                : message.type === "info"
-                  ? "bg-blue-100 text-blue-700 border border-blue-300"
-                  : "bg-red-100 text-red-700 border border-red-300"
+                : "bg-red-100 text-red-700 border border-red-300"
             }`}
           >
             {message.text}
-          </div>
-        )}
-
-        {/* Modo offline */}
-        {isOffline && (
-          <div className="mb-6 p-4 rounded-lg bg-orange-100 text-orange-700 border border-orange-300">
-            <div className="flex items-center">
-              <WifiOff className="w-5 h-5 mr-2" />
-              <span>Trabajando en modo offline. Los cambios se sincronizarán cuando vuelva la conexión.</span>
-              <button onClick={forceRefresh} className="ml-auto text-orange-600 hover:text-orange-800 underline">
-                Intentar reconectar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Error de sincronización */}
-        {syncError && !isOffline && (
-          <div className="mb-6 p-4 rounded-lg bg-yellow-100 text-yellow-700 border border-yellow-300">
-            <div className="flex items-center">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              <span>Error de sincronización: {syncError}</span>
-              <button onClick={testConnection} className="ml-auto text-yellow-600 hover:text-yellow-800 underline">
-                Probar conexión
-              </button>
-            </div>
           </div>
         )}
 
@@ -417,24 +406,6 @@ export default function Dashboard() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2 font-playfair">¡Hola, {user?.first_name}!</h1>
           <p className="text-gray-600">Gestiona tus restaurantes y menús desde aquí</p>
-          <p className="text-sm text-green-600 mt-1">
-            {isOffline
-              ? "📱 Modo offline activado - Los datos se guardan localmente"
-              : "🔄 Auto-sincronización activada - Los cambios se detectan automáticamente cada 15 segundos"}
-          </p>
-
-          {/* Información de debug */}
-          <div className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-600">
-            <p>
-              <strong>API URL:</strong> {process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"}
-            </p>
-            <p>
-              <strong>Estado:</strong> {isOffline ? "Offline" : "Online"}
-            </p>
-            <button onClick={testConnection} className="mt-1 text-blue-500 hover:text-blue-600 underline">
-              🔧 Probar conexión al servidor
-            </button>
-          </div>
         </div>
 
         {/* Estadísticas rápidas */}
@@ -444,7 +415,7 @@ export default function Dashboard() {
               <Store className="w-8 h-8 text-red-500 mr-3" />
               <div>
                 <p className="text-sm text-gray-600">Restaurantes</p>
-                <p className="text-2xl font-bold text-gray-900">{restaurants?.length || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{restaurants.length}</p>
               </div>
             </div>
           </div>
@@ -459,14 +430,10 @@ export default function Dashboard() {
           </div>
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
-              {isOffline ? (
-                <WifiOff className="w-8 h-8 text-orange-500 mr-3" />
-              ) : (
-                <Settings className="w-8 h-8 text-blue-500 mr-3" />
-              )}
+              <Settings className="w-8 h-8 text-blue-500 mr-3" />
               <div>
-                <p className="text-sm text-gray-600">{isOffline ? "Modo" : "Email"}</p>
-                <p className="text-sm font-medium text-gray-900">{isOffline ? "Offline" : user?.email}</p>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="text-sm font-medium text-gray-900">{user?.email}</p>
               </div>
             </div>
           </div>
@@ -488,7 +455,7 @@ export default function Dashboard() {
           </div>
 
           <div className="p-6">
-            {!restaurants || restaurants.length === 0 ? (
+            {restaurants.length === 0 ? (
               <div className="text-center py-12">
                 <Store className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No tienes restaurantes aún</h3>
@@ -505,62 +472,106 @@ export default function Dashboard() {
                 {restaurants.map((restaurant) => (
                   <div
                     key={restaurant.id}
-                    className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow relative"
+                    className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
                   >
-                    {/* Indicador de sincronización */}
-                    <div className="absolute top-2 right-2">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          isOffline ? "bg-orange-400" : syncError ? "bg-red-400" : "bg-green-400 animate-pulse"
-                        }`}
-                        title={isOffline ? "Modo offline" : syncError ? "Error de sincronización" : "Sincronizado"}
-                      ></div>
-                    </div>
-
-                    <div className="mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">{restaurant.name}</h3>
-                      {restaurant.description && <p className="text-gray-600 text-sm mb-3">{restaurant.description}</p>}
-                    </div>
-
-                    <div className="space-y-2 text-sm text-gray-600">
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2" />
-                        <span>
-                          {restaurant.address}, {restaurant.city}
-                        </span>
-                      </div>
-                      {restaurant.phone && (
-                        <div className="flex items-center">
-                          <Phone className="w-4 h-4 mr-2" />
-                          <span>{restaurant.phone}</span>
-                        </div>
+                    {/* Restaurant header with logo */}
+                    <div className="relative h-32 bg-gradient-to-r from-red-500 to-red-600">
+                      {restaurant.cover_image_url && (
+                        <Image
+                          src={restaurant.cover_image_url || "/placeholder.svg"}
+                          alt={`${restaurant.name} cover`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        />
                       )}
-                      {restaurant.email && (
-                        <div className="flex items-center">
-                          <Mail className="w-4 h-4 mr-2" />
-                          <span>{restaurant.email}</span>
+                      <div className="absolute inset-0 bg-black bg-opacity-20"></div>
+
+                      {/* Logo */}
+                      {restaurant.logo_url && (
+                        <div className="absolute bottom-4 left-4 w-16 h-16 bg-white rounded-full p-1 shadow-lg">
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={restaurant.logo_url || "/placeholder.svg"}
+                              alt={`${restaurant.name} logo`}
+                              fill
+                              className="object-cover rounded-full"
+                              sizes="64px"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex justify-between items-center">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            restaurant.status === "trial"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : restaurant.status === "active"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {restaurant.status === "trial" ? "Prueba" : restaurant.status}
-                        </span>
-                        {restaurant.status === "trial" && (
-                          <span className="text-xs text-gray-500">
-                            {getDaysRemaining(restaurant.trial_end_date)} días restantes
-                          </span>
+                    <div className="p-6">
+                      <div className="mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{restaurant.name}</h3>
+                        {restaurant.description && (
+                          <p className="text-gray-600 text-sm mb-3">{restaurant.description}</p>
                         )}
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <MapPin className="w-4 h-4 mr-2" />
+                          <span>
+                            {restaurant.address}, {restaurant.city}
+                          </span>
+                        </div>
+                        {restaurant.phone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-2" />
+                            <span>{restaurant.phone}</span>
+                          </div>
+                        )}
+                        {restaurant.email && (
+                          <div className="flex items-center">
+                            <Mail className="w-4 h-4 mr-2" />
+                            <span>{restaurant.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              restaurant.status === "trial"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : restaurant.status === "active"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {restaurant.status === "trial" ? "Prueba" : restaurant.status}
+                          </span>
+                          {restaurant.status === "trial" && (
+                            <span className="text-xs text-gray-500">
+                              {getDaysRemaining(restaurant.trial_end_date)} días restantes
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => openEditModal(restaurant)}
+                            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Editar Información
+                          </button>
+                          <button
+                            onClick={() => openImageGallery(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Gestionar Imágenes
+                          </button>
+                          <button
+                            onClick={() => openDeleteConfirm(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm border border-red-300"
+                          >
+                            Eliminar Restaurante
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -574,10 +585,7 @@ export default function Dashboard() {
         {showAddRestaurant && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 font-playfair">
-                Agregar Nuevo Restaurante
-                {isOffline && <span className="text-orange-500 text-sm ml-2">(Modo offline)</span>}
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4 font-playfair">Agregar Nuevo Restaurante</h3>
 
               <form onSubmit={handleAddRestaurant} className="space-y-4">
                 <div>
@@ -655,10 +663,222 @@ export default function Dashboard() {
                     type="submit"
                     className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
                   >
-                    {isOffline ? "Agregar (offline)" : "Agregar"}
+                    Agregar
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para editar restaurante */}
+        {showEditRestaurant && editingRestaurant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-lg font-bold text-gray-900 font-playfair">Editar Restaurante</h3>
+                <button
+                  onClick={() => {
+                    setShowEditRestaurant(false)
+                    setEditingRestaurant(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                <form onSubmit={handleEditRestaurant} className="p-6 space-y-6">
+                  {/* Información básica */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Información Básica</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                        <input
+                          type="text"
+                          value={editingRestaurant.name}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, name: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad *</label>
+                        <input
+                          type="text"
+                          value={editingRestaurant.city}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, city: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Dirección *</label>
+                      <input
+                        type="text"
+                        value={editingRestaurant.address}
+                        onChange={(e) => setEditingRestaurant({ ...editingRestaurant, address: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                      <textarea
+                        value={editingRestaurant.description || ""}
+                        onChange={(e) => setEditingRestaurant({ ...editingRestaurant, description: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                        <input
+                          type="tel"
+                          value={editingRestaurant.phone || ""}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, phone: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={editingRestaurant.email || ""}
+                          onChange={(e) => setEditingRestaurant({ ...editingRestaurant, email: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Imágenes */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Imágenes</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <ImageUpload
+                          currentImage={editingRestaurant.logo_url}
+                          onImageChange={(url) => setEditingRestaurant({ ...editingRestaurant, logo_url: url })}
+                          label="Logo del Restaurante"
+                          aspectRatio="square"
+                          placeholder="Logo cuadrado recomendado"
+                          restaurantId={editingRestaurant.id}
+                        />
+                      </div>
+
+                      <div>
+                        <ImageUpload
+                          currentImage={editingRestaurant.cover_image_url}
+                          onImageChange={(url) => setEditingRestaurant({ ...editingRestaurant, cover_image_url: url })}
+                          label="Imagen de Portada"
+                          aspectRatio="wide"
+                          placeholder="Imagen panorámica del restaurante"
+                          restaurantId={editingRestaurant.id}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="flex space-x-3 p-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditRestaurant(false)
+                    setEditingRestaurant(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleEditRestaurant}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors text-sm"
+                >
+                  Actualizar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Gallery Modal */}
+        {showImageGallery && selectedRestaurant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Imágenes de {selectedRestaurant.name}</h3>
+                  <p className="text-sm text-gray-600">Gestiona el logo, fotos y otras imágenes de tu restaurante</p>
+                </div>
+                <button onClick={() => setShowImageGallery(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <RestaurantImageGallery
+                  restaurantId={selectedRestaurant.id}
+                  images={selectedRestaurant.images || []}
+                  onImagesChange={handleRestaurantImagesChange}
+                  canEdit={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de eliminación */}
+        {showDeleteConfirm && restaurantToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Confirmar Eliminación</h3>
+
+              <div className="mb-6">
+                <p className="text-gray-600 mb-2">¿Estás seguro de que deseas eliminar el restaurante?</p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="font-semibold text-red-800">{restaurantToDelete.name}</p>
+                  <p className="text-sm text-red-600">
+                    {restaurantToDelete.address}, {restaurantToDelete.city}
+                  </p>
+                </div>
+                <p className="text-sm text-red-600 mt-3">
+                  <strong>Esta acción no se puede deshacer.</strong> Se eliminarán todos los datos asociados al
+                  restaurante.
+                </p>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setRestaurantToDelete(null)
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteRestaurant}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
           </div>
         )}
