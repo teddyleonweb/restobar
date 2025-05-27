@@ -1,237 +1,251 @@
 "use client"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import {
+  ArrowLeft,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  RefreshCw,
+  Globe,
+  Database,
+  FileText,
+  Settings,
+  Info,
+} from "lucide-react"
+import { getApiUrl, getCustomApiUrl } from "@/lib/api-config"
+import { ApiClient } from "@/lib/api-client"
 
-interface TestResult {
+interface DiagnosticResult {
   name: string
-  status: "success" | "error" | "warning" | "pending"
+  status: "success" | "error" | "warning" | "loading"
   message: string
   details?: string
+  url?: string
 }
 
-export default function DiagnosticPage() {
-  const [tests, setTests] = useState<TestResult[]>([])
+export default function Diagnostico() {
+  const [results, setResults] = useState<DiagnosticResult[]>([])
   const [isRunning, setIsRunning] = useState(false)
+
+  const updateResult = (name: string, updates: Partial<DiagnosticResult>) => {
+    setResults((prev) => prev.map((result) => (result.name === name ? { ...result, ...updates } : result)))
+  }
 
   const runDiagnostics = async () => {
     setIsRunning(true)
-    setTests([])
 
-    const newTests: TestResult[] = []
+    // Initialize all tests
+    const initialTests: DiagnosticResult[] = [
+      { name: "Variables de Entorno", status: "loading", message: "Verificando configuración..." },
+      { name: "Conectividad del Servidor", status: "loading", message: "Probando conexión..." },
+      { name: "Archivo API", status: "loading", message: "Verificando existencia del archivo..." },
+      { name: "Endpoint de Estado", status: "loading", message: "Probando endpoint de estado..." },
+      { name: "Endpoint de Login", status: "loading", message: "Probando endpoint de login..." },
+      { name: "Información del Entorno", status: "loading", message: "Recopilando información..." },
+    ]
 
-    // Test 1: Variables de entorno
-    newTests.push({
-      name: "Variables de entorno",
-      status: "pending",
-      message: "Verificando configuración...",
-    })
-    setTests([...newTests])
+    setResults(initialTests)
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-
-    if (apiUrl && appUrl) {
-      newTests[0] = {
-        name: "Variables de entorno",
-        status: "success",
-        message: "Variables configuradas correctamente",
-        details: `API_URL: ${apiUrl}, APP_URL: ${appUrl}`,
-      }
-    } else {
-      newTests[0] = {
-        name: "Variables de entorno",
-        status: "error",
-        message: "Variables de entorno faltantes",
-        details: `API_URL: ${apiUrl || "NO DEFINIDA"}, APP_URL: ${appUrl || "NO DEFINIDA"}`,
-      }
-    }
-    setTests([...newTests])
-
-    // Test 2: Conectividad básica al dominio
-    newTests.push({
-      name: "Conectividad al servidor",
-      status: "pending",
-      message: "Probando conexión al servidor...",
-    })
-    setTests([...newTests])
-
+    // Test 1: Environment Variables
     try {
-      const baseUrl = apiUrl || "https://tubarresto.somediave.com/api"
-      const domain = new URL(baseUrl).origin
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
-      const response = await fetch(domain, {
+      if (apiBaseUrl) {
+        updateResult("Variables de Entorno", {
+          status: "success",
+          message: `✅ Variables configuradas correctamente`,
+          details: `API Base: ${apiBaseUrl}\nAPI URL: ${apiUrl || "No definida"}\nApp URL: ${appUrl || "No definida"}`,
+          url: apiBaseUrl,
+        })
+      } else {
+        updateResult("Variables de Entorno", {
+          status: "error",
+          message: "❌ NEXT_PUBLIC_API_BASE_URL no está definida",
+          details: "Esta variable es requerida para el funcionamiento de la aplicación",
+        })
+      }
+    } catch (error) {
+      updateResult("Variables de Entorno", {
+        status: "error",
+        message: "❌ Error al verificar variables de entorno",
+        details: error instanceof Error ? error.message : "Error desconocido",
+      })
+    }
+
+    // Test 2: Server Connectivity
+    try {
+      const baseUrl = getCustomApiUrl("")
+      const response = await fetch(baseUrl, {
         method: "HEAD",
         mode: "no-cors",
       })
 
-      newTests[1] = {
-        name: "Conectividad al servidor",
+      updateResult("Conectividad del Servidor", {
         status: "success",
-        message: "Servidor accesible",
-        details: `Dominio: ${domain}`,
+        message: "✅ Servidor accesible",
+        details: `Conectado a: ${baseUrl}`,
+        url: baseUrl,
+      })
+    } catch (error) {
+      updateResult("Conectividad del Servidor", {
+        status: "error",
+        message: "❌ No se puede conectar al servidor",
+        details: error instanceof Error ? error.message : "Error de conexión",
+        url: getCustomApiUrl(""),
+      })
+    }
+
+    // Test 3: API File Existence
+    try {
+      const apiFileUrl = getCustomApiUrl("/api.php")
+      const response = await fetch(apiFileUrl, {
+        method: "GET",
+        mode: "cors",
+        headers: { Accept: "application/json" },
+      })
+
+      if (response.ok) {
+        updateResult("Archivo API", {
+          status: "success",
+          message: "✅ Archivo api.php encontrado",
+          details: `Status: ${response.status} ${response.statusText}`,
+          url: apiFileUrl,
+        })
+      } else {
+        updateResult("Archivo API", {
+          status: "error",
+          message: `❌ Error HTTP ${response.status}`,
+          details: `${response.statusText} - Verifica que api.php existe en el servidor`,
+          url: apiFileUrl,
+        })
       }
     } catch (error) {
-      newTests[1] = {
-        name: "Conectividad al servidor",
+      updateResult("Archivo API", {
         status: "error",
-        message: "No se puede conectar al servidor",
+        message: "❌ No se puede acceder a api.php",
         details: error instanceof Error ? error.message : "Error desconocido",
-      }
+        url: getCustomApiUrl("/api.php"),
+      })
     }
-    setTests([...newTests])
 
-    // Test 3: Verificar archivo API
-    newTests.push({
-      name: "Archivo API",
-      status: "pending",
-      message: "Verificando existencia del archivo API...",
-    })
-    setTests([...newTests])
-
+    // Test 4: Status Endpoint
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
-      const testUrl = `${apiUrl}/api.php?action=status`
+      const result = await ApiClient.checkStatus()
 
-      console.log("🧪 Probando URL:", testUrl)
+      if (result.success) {
+        updateResult("Endpoint de Estado", {
+          status: "success",
+          message: "✅ API funcionando correctamente",
+          details: `DB: ${result.data?.database?.users_count || 0} usuarios, ${result.data?.database?.restaurants_count || 0} restaurantes`,
+          url: getApiUrl("STATUS"),
+        })
+      } else {
+        updateResult("Endpoint de Estado", {
+          status: "error",
+          message: "❌ API responde pero con error",
+          details: result.error || "Error desconocido",
+          url: getApiUrl("STATUS"),
+        })
+      }
+    } catch (error) {
+      updateResult("Endpoint de Estado", {
+        status: "error",
+        message: "❌ Error en endpoint de estado",
+        details: error instanceof Error ? error.message : "Error desconocido",
+        url: getApiUrl("STATUS"),
+      })
+    }
 
-      const response = await fetch(testUrl, {
-        method: "GET",
+    // Test 5: Login Endpoint
+    try {
+      const response = await fetch(getApiUrl("LOGIN"), {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Accept: "application/json",
         },
         mode: "cors",
-      })
-
-      console.log("📊 Respuesta:", {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
+        body: JSON.stringify({
+          email: "test@test.com",
+          password: "invalid",
+        }),
       })
 
       const responseText = await response.text()
-      console.log("📄 Contenido:", responseText.substring(0, 200))
 
-      if (response.status === 403) {
-        newTests[2] = {
-          name: "Archivo API",
-          status: "error",
-          message: "Error 403: Acceso prohibido",
-          details: `El servidor rechaza la conexión. Posibles causas: permisos del archivo, configuración del servidor, o restricciones de acceso. Respuesta: ${responseText.substring(0, 100)}`,
-        }
-      } else if (response.status === 404) {
-        newTests[2] = {
-          name: "Archivo API",
-          status: "error",
-          message: "Error 404: Archivo no encontrado",
-          details: `El archivo api.php no existe en la ruta especificada: ${testUrl}`,
-        }
+      if (response.status === 401 || response.status === 400) {
+        // Expected error for invalid credentials
+        updateResult("Endpoint de Login", {
+          status: "success",
+          message: "✅ Endpoint de login funcional",
+          details: "Responde correctamente a credenciales inválidas",
+          url: getApiUrl("LOGIN"),
+        })
       } else if (response.ok) {
-        try {
-          const result = JSON.parse(responseText)
-          newTests[2] = {
-            name: "Archivo API",
-            status: "success",
-            message: "API responde correctamente",
-            details: `Status: ${response.status}, Respuesta JSON válida`,
-          }
-        } catch (parseError) {
-          newTests[2] = {
-            name: "Archivo API",
-            status: "warning",
-            message: "API responde pero no es JSON válido",
-            details: `Status: ${response.status}, Contenido: ${responseText.substring(0, 100)}...`,
-          }
-        }
+        updateResult("Endpoint de Login", {
+          status: "warning",
+          message: "⚠️ Login responde OK (inesperado)",
+          details: "El endpoint responde exitosamente con credenciales de prueba",
+          url: getApiUrl("LOGIN"),
+        })
       } else {
-        newTests[2] = {
-          name: "Archivo API",
+        updateResult("Endpoint de Login", {
           status: "error",
-          message: `Error HTTP ${response.status}`,
-          details: `${response.statusText} - ${responseText.substring(0, 100)}`,
-        }
+          message: `❌ Error HTTP ${response.status}`,
+          details: responseText.substring(0, 200),
+          url: getApiUrl("LOGIN"),
+        })
       }
     } catch (error) {
-      newTests[2] = {
-        name: "Archivo API",
+      updateResult("Endpoint de Login", {
         status: "error",
-        message: "Error de conexión",
+        message: "❌ Error en endpoint de login",
         details: error instanceof Error ? error.message : "Error desconocido",
-      }
-    }
-    setTests([...newTests])
-
-    // Test 4: Probar diferentes endpoints
-    newTests.push({
-      name: "Endpoints alternativos",
-      status: "pending",
-      message: "Probando rutas alternativas...",
-    })
-    setTests([...newTests])
-
-    const alternativeUrls = [
-      "https://tubarresto.somediave.com/api.php?action=status",
-      "https://tubarresto.somediave.com/api/api.php?action=status",
-      "https://tubarresto.somediave.com/wp-content/themes/tubarresto/api.php?action=status",
-    ]
-
-    let foundWorking = false
-    let workingUrl = ""
-
-    for (const url of alternativeUrls) {
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          mode: "cors",
-        })
-
-        if (response.ok) {
-          foundWorking = true
-          workingUrl = url
-          break
-        }
-      } catch (error) {
-        // Continuar con la siguiente URL
-      }
+        url: getApiUrl("LOGIN"),
+      })
     }
 
-    if (foundWorking) {
-      newTests[3] = {
-        name: "Endpoints alternativos",
+    // Test 6: Environment Information
+    try {
+      const envInfo = {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        platform: navigator.platform,
+        cookieEnabled: navigator.cookieEnabled,
+        onLine: navigator.onLine,
+        timestamp: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
+        apiUrl: process.env.NEXT_PUBLIC_API_URL,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+      }
+
+      updateResult("Información del Entorno", {
         status: "success",
-        message: "Encontrada ruta alternativa funcional",
-        details: `URL funcional: ${workingUrl}`,
-      }
-    } else {
-      newTests[3] = {
-        name: "Endpoints alternativos",
+        message: "✅ Información recopilada",
+        details: Object.entries(envInfo)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join("\n"),
+      })
+    } catch (error) {
+      updateResult("Información del Entorno", {
         status: "error",
-        message: "Ninguna ruta alternativa funciona",
-        details: `URLs probadas: ${alternativeUrls.join(", ")}`,
-      }
+        message: "❌ Error al recopilar información",
+        details: error instanceof Error ? error.message : "Error desconocido",
+      })
     }
-    setTests([...newTests])
-
-    // Test 5: Información del entorno
-    newTests.push({
-      name: "Información del entorno",
-      status: "success",
-      message: "Información recopilada",
-      details: `
-        User Agent: ${navigator.userAgent}
-        Timestamp: ${new Date().toISOString()}
-        Location: ${window.location.href}
-        Referrer: ${document.referrer || "Directo"}
-      `,
-    })
-    setTests([...newTests])
 
     setIsRunning(false)
   }
 
-  const getStatusIcon = (status: TestResult["status"]) => {
+  useEffect(() => {
+    runDiagnostics()
+  }, [])
+
+  const getStatusIcon = (status: DiagnosticResult["status"]) => {
     switch (status) {
       case "success":
         return <CheckCircle className="w-5 h-5 text-green-500" />
@@ -239,12 +253,14 @@ export default function DiagnosticPage() {
         return <XCircle className="w-5 h-5 text-red-500" />
       case "warning":
         return <AlertCircle className="w-5 h-5 text-yellow-500" />
-      case "pending":
-        return <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      case "loading":
+        return <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
+      default:
+        return <Info className="w-5 h-5 text-gray-500" />
     }
   }
 
-  const getStatusColor = (status: TestResult["status"]) => {
+  const getStatusColor = (status: DiagnosticResult["status"]) => {
     switch (status) {
       case "success":
         return "border-green-200 bg-green-50"
@@ -252,97 +268,173 @@ export default function DiagnosticPage() {
         return "border-red-200 bg-red-50"
       case "warning":
         return "border-yellow-200 bg-yellow-50"
-      case "pending":
+      case "loading":
         return "border-blue-200 bg-blue-50"
+      default:
+        return "border-gray-200 bg-gray-50"
+    }
+  }
+
+  const getTestIcon = (name: string) => {
+    switch (name) {
+      case "Variables de Entorno":
+        return <Settings className="w-5 h-5 text-gray-600" />
+      case "Conectividad del Servidor":
+        return <Globe className="w-5 h-5 text-gray-600" />
+      case "Archivo API":
+        return <FileText className="w-5 h-5 text-gray-600" />
+      case "Endpoint de Estado":
+        return <Database className="w-5 h-5 text-gray-600" />
+      case "Endpoint de Login":
+        return <Database className="w-5 h-5 text-gray-600" />
+      case "Información del Entorno":
+        return <Info className="w-5 h-5 text-gray-600" />
+      default:
+        return <Info className="w-5 h-5 text-gray-600" />
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4 max-w-4xl">
-        <div className="mb-6">
-          <Link href="/" className="flex items-center text-red-500 hover:text-red-600 transition-colors mb-4">
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            <span>Volver al inicio</span>
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Diagnóstico del Sistema</h1>
-          <p className="text-gray-600">Herramienta para identificar problemas de conectividad y configuración</p>
+    <div className="min-h-screen bg-gray-50 font-lato">
+      {/* Header */}
+      <header className="bg-white shadow">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <h1 className="text-xl font-bold text-gray-900">Diagnóstico del Sistema</h1>
+            </div>
+            <Link href="/login" className="flex items-center text-gray-700 hover:text-red-500 transition-colors">
+              <ArrowLeft className="w-5 h-5 mr-2" />
+              <span>Volver al Login</span>
+            </Link>
+          </div>
         </div>
+      </header>
 
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Ejecutar Diagnóstico</h2>
-            <button
-              onClick={runDiagnostics}
-              disabled={isRunning}
-              className="bg-red-500 hover:bg-red-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg transition-colors"
-            >
-              {isRunning ? "Ejecutando..." : "Iniciar Diagnóstico"}
-            </button>
+      <main className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Diagnóstico de Conectividad API</h2>
+            <p className="text-gray-600 mb-4">
+              Esta página verifica la conectividad y configuración de la API de Tu Bar Resto.
+            </p>
+
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={runDiagnostics}
+                disabled={isRunning}
+                className="flex items-center bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRunning ? "animate-spin" : ""}`} />
+                {isRunning ? "Ejecutando..." : "Ejecutar Diagnóstico"}
+              </button>
+
+              <div className="text-sm text-gray-500">Última ejecución: {new Date().toLocaleTimeString()}</div>
+            </div>
           </div>
 
-          {tests.length > 0 && (
-            <div className="space-y-4">
-              {tests.map((test, index) => (
-                <div key={index} className={`border rounded-lg p-4 ${getStatusColor(test.status)}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium text-gray-900">{test.name}</h3>
-                    {getStatusIcon(test.status)}
+          {/* Results */}
+          <div className="space-y-4">
+            {results.map((result, index) => (
+              <div key={index} className={`border rounded-lg p-6 ${getStatusColor(result.status)}`}>
+                <div className="flex items-start space-x-4">
+                  <div className="flex-shrink-0">{getTestIcon(result.name)}</div>
+
+                  <div className="flex-grow">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{result.name}</h3>
+                      {getStatusIcon(result.status)}
+                    </div>
+
+                    <p className="text-gray-700 mb-2">{result.message}</p>
+
+                    {result.url && (
+                      <div className="mb-2">
+                        <span className="text-sm font-medium text-gray-600">URL: </span>
+                        <code className="text-sm bg-gray-100 px-2 py-1 rounded">{result.url}</code>
+                      </div>
+                    )}
+
+                    {result.details && (
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-800">
+                          Ver detalles
+                        </summary>
+                        <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-x-auto whitespace-pre-wrap">
+                          {result.details}
+                        </pre>
+                      </details>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-700 mb-2">{test.message}</p>
-                  {test.details && (
-                    <details className="text-xs text-gray-600">
-                      <summary className="cursor-pointer hover:text-gray-800">Ver detalles</summary>
-                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto whitespace-pre-wrap">
-                        {test.details}
-                      </pre>
-                    </details>
-                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Información de Configuración Actual</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <strong>API URL:</strong>
-              <br />
-              <code className="bg-gray-100 px-2 py-1 rounded">{process.env.NEXT_PUBLIC_API_URL || "No definida"}</code>
+          {/* Common Solutions */}
+          <div className="mt-12 bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Soluciones Comunes para Error 403</h3>
+            <div className="space-y-4 text-sm text-gray-700">
+              <div>
+                <h4 className="font-semibold text-gray-900">1. Verificar archivo API</h4>
+                <p>
+                  Asegúrate de que el archivo <code className="bg-gray-100 px-1 rounded">api.php</code> existe en el
+                  servidor en la ruta correcta.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900">2. Permisos del archivo</h4>
+                <p>El archivo debe tener permisos de lectura (644 o 755) para que el servidor web pueda accederlo.</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900">3. Configuración CORS</h4>
+                <p>Verifica que el servidor permita solicitudes CORS desde el dominio de la aplicación.</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900">4. Configuración del servidor</h4>
+                <p>Algunos servidores pueden bloquear solicitudes a archivos .php por configuración de seguridad.</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900">5. URL correcta</h4>
+                <p>
+                  La URL debe ser exactamente:{" "}
+                  <code className="bg-gray-100 px-1 rounded">https://tubarresto.somediave.com/api.php</code>
+                </p>
+              </div>
             </div>
-            <div>
-              <strong>APP URL:</strong>
-              <br />
-              <code className="bg-gray-100 px-2 py-1 rounded">{process.env.NEXT_PUBLIC_APP_URL || "No definida"}</code>
-            </div>
-            <div>
-              <strong>Entorno:</strong>
-              <br />
-              <code className="bg-gray-100 px-2 py-1 rounded">{process.env.NODE_ENV || "development"}</code>
-            </div>
-            <div>
-              <strong>URL actual:</strong>
-              <br />
-              <code className="bg-gray-100 px-2 py-1 rounded">
-                {typeof window !== "undefined" ? window.location.href : "SSR"}
-              </code>
+          </div>
+
+          {/* API Configuration Info */}
+          <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <h3 className="text-lg font-bold text-blue-900 mb-4">Configuración Actual de la API</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-medium text-blue-800">Base URL:</span>
+                <code className="block bg-white px-2 py-1 rounded mt-1">
+                  {process.env.NEXT_PUBLIC_API_BASE_URL || "No definida"}
+                </code>
+              </div>
+              <div>
+                <span className="font-medium text-blue-800">Login URL:</span>
+                <code className="block bg-white px-2 py-1 rounded mt-1">{getApiUrl("LOGIN")}</code>
+              </div>
+              <div>
+                <span className="font-medium text-blue-800">Status URL:</span>
+                <code className="block bg-white px-2 py-1 rounded mt-1">{getApiUrl("STATUS")}</code>
+              </div>
+              <div>
+                <span className="font-medium text-blue-800">Upload URL:</span>
+                <code className="block bg-white px-2 py-1 rounded mt-1">{getApiUrl("UPLOAD_IMAGE")}</code>
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="font-medium text-yellow-800 mb-2">💡 Soluciones comunes para error 403:</h3>
-          <ul className="text-sm text-yellow-700 space-y-1">
-            <li>• Verificar que el archivo api.php existe en el servidor</li>
-            <li>• Comprobar permisos del archivo (debe ser 644 o 755)</li>
-            <li>• Revisar configuración de CORS en el servidor</li>
-            <li>• Verificar que las variables de entorno estén configuradas</li>
-            <li>• Comprobar si hay restricciones de IP o geolocalización</li>
-          </ul>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }

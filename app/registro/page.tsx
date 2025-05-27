@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Facebook, Instagram, Twitter, LogIn, ArrowLeft, Copy, Check } from "lucide-react"
+import { getApiUrl } from "@/lib/api-config"
 
 export default function Registro() {
   const [formData, setFormData] = useState({
@@ -59,10 +60,10 @@ export default function Registro() {
 
     try {
       // Usar la variable de entorno centralizada
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-      console.log("Intentando conectar a la API:", `${apiUrl}/api.php?action=register`)
+      const apiUrl = getApiUrl("REGISTER")
+      console.log("Intentando conectar a la API:", apiUrl)
 
-      const response = await fetch(`${apiUrl}/api.php?action=register`, {
+      const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
