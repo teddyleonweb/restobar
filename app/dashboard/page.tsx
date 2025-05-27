@@ -164,7 +164,7 @@ export default function Dashboard() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com/api"
 
-      const response = await fetch(`${apiUrl}/api-updated-with-images.php?action=update-restaurant`, {
+      const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -225,7 +225,7 @@ export default function Dashboard() {
 
       console.log("Deleting restaurant:", restaurantToDelete.id)
 
-      const response = await fetch(`${apiUrl}/api-updated-with-images.php?action=delete-restaurant`, {
+      const response = await fetch(`${apiUrl}/api.php?action=delete-restaurant`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

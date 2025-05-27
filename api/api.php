@@ -60,6 +60,38 @@ class TuBarRestoAPI {
                 }
                 break;
                 
+            case 'add-restaurant':
+                if ($method === 'POST') {
+                    $this->addRestaurant();
+                } else {
+                    $this->sendError('Método no permitido', 405);
+                }
+                break;
+                
+            case 'update-restaurant':
+                if ($method === 'POST') {
+                    $this->updateRestaurant();
+                } else {
+                    $this->sendError('Método no permitido', 405);
+                }
+                break;
+                
+            case 'delete-restaurant':
+                if ($method === 'POST') {
+                    $this->deleteRestaurant();
+                } else {
+                    $this->sendError('Método no permitido', 405);
+                }
+                break;
+                
+            case 'get-restaurants':
+                if ($method === 'GET') {
+                    $this->getRestaurants();
+                } else {
+                    $this->sendError('Método no permitido', 405);
+                }
+                break;
+                
             default:
                 $this->sendError('Endpoint no encontrado', 404);
         }
@@ -225,6 +257,266 @@ class TuBarRestoAPI {
         } catch (Exception $e) {
             $this->sendError('Error al iniciar sesión: ' . $e->getMessage(), 500);
         }
+    }
+    
+    private function addRestaurant() {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $token = $this->getBearerToken();
+        
+        if (!$token) {
+            $this->sendError('Token requerido', 401);
+            return;
+        }
+        
+        $user_id = $this->validateToken($token);
+        if (!$user_id) {
+            $this->sendError('Token inválido', 401);
+            return;
+        }
+        
+        // Validar datos requeridos
+        $required = ['name', 'address', 'city'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                $this->sendError("El campo {$field} es requerido", 400);
+                return;
+            }
+        }
+        
+        try {
+            // Generar slug único
+            $slug = $this->generateSlug($input['name']);
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO " . DB_PREFIX . "restaurants 
+                (user_id, name, slug, description, address, city, phone, email, status, trial_start_date, trial_end_date, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'trial', NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY), NOW())
+            ");
+            
+            $stmt->execute([
+                $user_id,
+                $input['name'],
+                $slug,
+                $input['description'] ?? '',
+                $input['address'],
+                $input['city'],
+                $input['phone'] ?? '',
+                $input['email'] ?? ''
+            ]);
+            
+            $restaurant_id = $this->pdo->lastInsertId();
+            
+            // Obtener el restaurante creado
+            $restaurant = $this->getRestaurantById($restaurant_id);
+            
+            $this->sendSuccess([
+                'message' => 'Restaurante agregado exitosamente',
+                'restaurant' => $restaurant
+            ]);
+            
+        } catch (Exception $e) {
+            $this->sendError('Error al agregar restaurante: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function updateRestaurant() {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $token = $this->getBearerToken();
+        
+        if (!$token) {
+            $this->sendError('Token requerido', 401);
+            return;
+        }
+        
+        $user_id = $this->validateToken($token);
+        if (!$user_id) {
+            $this->sendError('Token inválido', 401);
+            return;
+        }
+        
+        if (empty($input['id'])) {
+            $this->sendError('ID del restaurante es requerido', 400);
+            return;
+        }
+        
+        try {
+            // Verificar que el restaurante pertenece al usuario
+            $stmt = $this->pdo->prepare("
+                SELECT id FROM " . DB_PREFIX . "restaurants 
+                WHERE id = ? AND user_id = ?
+            ");
+            $stmt->execute([$input['id'], $user_id]);
+            
+            if (!$stmt->fetch()) {
+                $this->sendError('Restaurante no encontrado', 404);
+                return;
+            }
+            
+            // Actualizar restaurante
+            $stmt = $this->pdo->prepare("
+                UPDATE " . DB_PREFIX . "restaurants 
+                SET name = ?, description = ?, address = ?, city = ?, phone = ?, email = ?, 
+                    logo_url = ?, cover_image_url = ?, updated_at = NOW()
+                WHERE id = ? AND user_id = ?
+            ");
+            
+            $stmt->execute([
+                $input['name'],
+                $input['description'] ?? '',
+                $input['address'],
+                $input['city'],
+                $input['phone'] ?? '',
+                $input['email'] ?? '',
+                $input['logo_url'] ?? null,
+                $input['cover_image_url'] ?? null,
+                $input['id'],
+                $user_id
+            ]);
+            
+            // Obtener el restaurante actualizado
+            $restaurant = $this->getRestaurantById($input['id']);
+            
+            $this->sendSuccess([
+                'message' => 'Restaurante actualizado exitosamente',
+                'restaurant' => $restaurant
+            ]);
+            
+        } catch (Exception $e) {
+            $this->sendError('Error al actualizar restaurante: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function deleteRestaurant() {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $token = $this->getBearerToken();
+        
+        if (!$token) {
+            $this->sendError('Token requerido', 401);
+            return;
+        }
+        
+        $user_id = $this->validateToken($token);
+        if (!$user_id) {
+            $this->sendError('Token inválido', 401);
+            return;
+        }
+        
+        if (empty($input['id'])) {
+            $this->sendError('ID del restaurante es requerido', 400);
+            return;
+        }
+        
+        try {
+            // Verificar que el restaurante pertenece al usuario
+            $stmt = $this->pdo->prepare("
+                SELECT id FROM " . DB_PREFIX . "restaurants 
+                WHERE id = ? AND user_id = ?
+            ");
+            $stmt->execute([$input['id'], $user_id]);
+            
+            if (!$stmt->fetch()) {
+                $this->sendError('Restaurante no encontrado', 404);
+                return;
+            }
+            
+            // Eliminar restaurante
+            $stmt = $this->pdo->prepare("
+                DELETE FROM " . DB_PREFIX . "restaurants 
+                WHERE id = ? AND user_id = ?
+            ");
+            $stmt->execute([$input['id'], $user_id]);
+            
+            $this->sendSuccess([
+                'message' => 'Restaurante eliminado exitosamente'
+            ]);
+            
+        } catch (Exception $e) {
+            $this->sendError('Error al eliminar restaurante: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function getRestaurants() {
+        $token = $this->getBearerToken();
+        
+        if (!$token) {
+            $this->sendError('Token requerido', 401);
+            return;
+        }
+        
+        $user_id = $this->validateToken($token);
+        if (!$user_id) {
+            $this->sendError('Token inválido', 401);
+            return;
+        }
+        
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM " . DB_PREFIX . "restaurants 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([$user_id]);
+            $restaurants = $stmt->fetchAll();
+            
+            $this->sendSuccess([
+                'restaurants' => $restaurants
+            ]);
+            
+        } catch (Exception $e) {
+            $this->sendError('Error al obtener restaurantes: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function getBearerToken() {
+        $headers = getallheaders();
+        if (isset($headers['Authorization'])) {
+            if (preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
+                return $matches[1];
+            }
+        }
+        return null;
+    }
+
+    private function validateToken($token) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT user_id FROM " . DB_PREFIX . "usermeta 
+                WHERE meta_key = 'session_token' AND meta_value = ?
+            ");
+            $stmt->execute([$token]);
+            $result = $stmt->fetch();
+            
+            return $result ? $result['user_id'] : false;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    private function generateSlug($name) {
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name)));
+        
+        // Verificar si el slug ya existe
+        $counter = 1;
+        $original_slug = $slug;
+        
+        while ($this->slugExists($slug)) {
+            $slug = $original_slug . '-' . $counter;
+            $counter++;
+        }
+        
+        return $slug;
+    }
+
+    private function slugExists($slug) {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM " . DB_PREFIX . "restaurants WHERE slug = ?");
+        $stmt->execute([$slug]);
+        return $stmt->fetchColumn() > 0;
+    }
+
+    private function getRestaurantById($id) {
+        $stmt = $this->pdo->prepare("SELECT * FROM " . DB_PREFIX . "restaurants WHERE id = ?");
+        $stmt->execute([$id]);
+        return $stmt->fetch();
     }
     
     // Métodos auxiliares
