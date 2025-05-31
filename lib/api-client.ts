@@ -8,41 +8,76 @@ export interface ApiResponse<T = any> {
   message?: string
 }
 
-// Menu related types
-export interface MenuCategory {
-  id: number
-  name: string
+// Add this interface at the top of the file, near other interfaces
+export interface RestaurantMenu {
+  id: string
+  title: string
   description?: string
-  type: "food" | "drink" | "both"
-  sort_order: number
-  is_active: boolean
-  created_at: string
+  url: string
+  fileType: "image" | "pdf"
+  fileName: string
+  fileSize: number
+  mimeType: string
+  width?: number
+  height?: number
+  sortOrder: number
+  createdAt: string
 }
 
-export interface MenuItem {
+export interface Restaurant {
   id: number
   name: string
   description?: string
+  address: string
+  city: string
+  phone?: string
+  email?: string
+  logo_url?: string
+  cover_image_url?: string
+}
+
+// NUEVA INTERFACE: MenuItem
+export interface MenuItem {
+  id: number
+  restaurant_id: number
+  category_id?: number | null
+  name: string
+  description?: string | null
   price: number
-  image_url?: string
+  image_url?: string | null
   type: "food" | "drink"
-  category_id?: number
-  category_name?: string
-  is_available: boolean
-  is_featured: boolean
-  dietary: {
-    is_vegetarian: boolean
-    is_vegan: boolean
-    is_gluten_free: boolean
-    is_lactose_free: boolean
-    is_spicy: boolean
-  }
-  calories?: number
-  preparation_time?: number
-  ingredients?: string
-  allergens?: string
-  sort_order: number
+  is_available?: boolean
+  is_featured?: boolean
+  is_vegetarian?: boolean
+  is_vegan?: boolean
+  is_gluten_free?: boolean
+  is_lactose_free?: boolean
+  is_spicy?: boolean
+  calories?: number | null
+  preparation_time?: number | null
+  ingredients?: string | null
+  allergens?: string | null
+  sort_order?: number | null
   created_at: string
+  updated_at?: string
+  // Discount fields
+  discount_percentage?: number | null
+  discount_start_date?: string | null // YYYY-MM-DD format
+  discount_end_date?: string | null // YYYY-MM-DD format
+  category_name?: string | null // Added for display from join
+}
+
+// NUEVA INTERFACE: MenuCategory
+export interface MenuCategory {
+  id: number
+  restaurant_id: number
+  name: string
+  description?: string | null
+  type: "food" | "drink" | "both"
+  sort_order: number | null
+  is_active: boolean
+  created_at: string
+  updated_at?: string
 }
 
 // Generic API client class
@@ -96,7 +131,22 @@ export class ApiClient {
   static async login(credentials: {
     email: string
     password: string
-  }): Promise<ApiResponse> {
+  }): Promise<
+    ApiResponse<{
+      message: string
+      user: {
+        id: number
+        email: string
+        first_name: string
+        last_name: string
+        phone: string
+        status: string
+        email_verified: boolean
+      }
+      restaurants: (Restaurant & { menus?: RestaurantMenu[] })[] // Add menus here
+      token: string
+    }>
+  > {
     const response = await fetch(getApiUrl("LOGIN"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,155 +223,164 @@ export class ApiClient {
     return this.handleResponse(response)
   }
 
-  // Restaurant image methods
-  static async addRestaurantImage(imageData: {
-    restaurant_id: number
-    file_name: string
-    title: string
-    description?: string
-    file_url: string
-    category?: string
-    is_primary?: boolean
-    file_size?: number
-    mime_type?: string
-    width?: number
-    height?: number
-    sort_order?: number
-  }): Promise<ApiResponse> {
-    const response = await fetch(getApiUrl("ADD_RESTAURANT_IMAGE"), {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(imageData),
-    })
+  // Add this new method for uploading menu files
+  static async uploadMenuFile(formData: FormData): Promise<ApiResponse> {
+    const token = localStorage.getItem("tubarresto_token")
+    const headers: HeadersInit = {}
 
-    return this.handleResponse(response)
-  }
-
-  static async updateRestaurantMainImage(imageData: {
-    restaurant_id: number
-    image_url: string
-    type: "logo" | "cover"
-  }): Promise<ApiResponse> {
-    const response = await fetch(getApiUrl("UPDATE_RESTAURANT_MAIN_IMAGE"), {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(imageData),
-    })
-
-    return this.handleResponse(response)
-  }
-
-  static async getRestaurantImages(restaurantId: number): Promise<ApiResponse> {
-    const response = await fetch(`${getApiUrl("GET_RESTAURANT_IMAGES")}&restaurant_id=${restaurantId}`, {
-      headers: this.getAuthHeaders(),
-    })
-
-    return this.handleResponse(response)
-  }
-
-  static async deleteRestaurantImage(imageId: number, deleteFile = false): Promise<ApiResponse> {
-    const response = await fetch(
-      `${getApiUrl("DELETE_RESTAURANT_IMAGE")}?id=${imageId}&delete_file=${deleteFile ? 1 : 0}`,
-      {
-        method: "DELETE",
-        headers: this.getAuthHeaders(),
-      },
-    )
-
-    return this.handleResponse(response)
-  }
-
-  // Menu methods
-  static async getMenuItems(restaurantId: number, type?: "food" | "drink", categoryId?: number): Promise<ApiResponse> {
-    // Añadir un timestamp para evitar la caché
-    const timestamp = new Date().getTime()
-
-    let url = `${getApiUrl("GET_MENU_ITEMS")}&restaurant_id=${restaurantId}&_t=${timestamp}`
-
-    if (type) {
-      url += `&type=${type}`
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
     }
 
-    if (categoryId) {
-      url += `&category_id=${categoryId}`
-    }
+    const response = await fetch(getApiUrl("UPLOAD_MENU_FILE"), {
+      method: "POST",
+      headers, // Note: Content-Type is automatically set by browser for FormData
+      body: formData,
+    })
 
+    return this.handleResponse(response)
+  }
+
+  // Add this new method for getting restaurant menus
+  static async getRestaurantMenus(
+    restaurantId: number,
+  ): Promise<ApiResponse<{ menus: RestaurantMenu[]; total_menus: number }>> {
+    const response = await fetch(getApiUrl("GET_RESTAURANT_MENUS") + `&restaurant_id=${restaurantId}`, {
+      method: "GET",
+      headers: this.getAuthHeaders(),
+      mode: "cors",
+    })
+    return this.handleResponse(response)
+  }
+
+  // Add this new method for deleting a restaurant menu
+  static async deleteRestaurantMenu(menuId: number): Promise<ApiResponse> {
+    const response = await fetch(getApiUrl("DELETE_RESTAURANT_MENU"), {
+      method: "POST", // Using POST as per API.php
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ id: menuId }),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Obtener ítems de menú
+  static async getMenuItems(
+    restaurantId: number,
+    type?: "food" | "drink",
+    categoryId?: number,
+  ): Promise<ApiResponse<{ menu_items: MenuItem[]; categories: MenuCategory[]; total_items: number }>> {
+    let url = getApiUrl("GET_MENU_ITEMS") + `&restaurant_id=${restaurantId}`
+    if (type) url += `&type=${type}`
+    if (categoryId) url += `&category_id=${categoryId}`
+
+    console.log("DEBUG: Fetching menu items from URL:", url) // NUEVO LOG
     const response = await fetch(url, {
+      method: "GET",
       headers: this.getAuthHeaders(),
-      cache: "no-store", // Añadir esta opción para evitar la caché
+      mode: "cors",
+      cache: "no-store", // Aseguramos que no se use caché
     })
-
     return this.handleResponse(response)
   }
 
-  static async addMenuItem(
-    menuItemData: Omit<MenuItem, "id" | "created_at" | "category_name"> & { restaurant_id: number },
-  ): Promise<ApiResponse> {
-    const { dietary, ...rest } = menuItemData
-    const payload = {
-      ...rest,
-      is_vegetarian: dietary.is_vegetarian,
-      is_vegan: dietary.is_vegan,
-      is_gluten_free: dietary.is_gluten_free,
-      is_lactose_free: dietary.is_lactose_free,
-      is_spicy: dietary.is_spicy,
-    }
+  // NUEVO MÉTODO: Obtener categorías de menú
+  static async getMenuCategories(
+    restaurantId: number,
+    type?: "food" | "drink" | "both",
+  ): Promise<ApiResponse<{ categories: MenuCategory[]; total_categories: number }>> {
+    let url = getApiUrl("GET_MENU_CATEGORIES") + `&restaurant_id=${restaurantId}`
+    if (type) url += `&type=${type}`
+
+    console.log("DEBUG: Fetching menu categories from URL:", url) // NUEVO LOG
+    const response = await fetch(url, {
+      method: "GET",
+      headers: this.getAuthHeaders(),
+      mode: "cors",
+      cache: "no-store", // Aseguramos que no se use caché
+    })
+    return this.handleResponse(response)
+  }
+
+  // Modify the `addMenuItem` method to include discount fields
+  static async addMenuItem(itemData: {
+    restaurant_id: number
+    category_id?: number
+    name: string
+    description?: string
+    price: number
+    image_url?: string
+    type: "food" | "drink"
+    is_available?: boolean
+    is_featured?: boolean
+    is_vegetarian?: boolean
+    is_vegan?: boolean
+    is_gluten_free?: boolean
+    is_lactose_free?: boolean
+    is_spicy?: boolean
+    calories?: number
+    preparation_time?: number
+    ingredients?: string
+    allergens?: string
+    sort_order?: number
+    // --- NUEVA FUNCIONALIDAD: Campos de descuento ---
+    discount_percentage?: number
+    discount_start_date?: string
+    discount_end_date?: string
+    // --- FIN NUEVA FUNCIONALIDAD ---
+  }): Promise<ApiResponse> {
     const response = await fetch(getApiUrl("ADD_MENU_ITEM"), {
       method: "POST",
       headers: this.getAuthHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(itemData),
     })
     return this.handleResponse(response)
   }
 
-  static async updateMenuItem(
-    menuItemData: Partial<Omit<MenuItem, "created_at" | "category_name">> & { id: number },
-  ): Promise<ApiResponse> {
-    const { dietary, ...rest } = menuItemData
-    const payload: any = { ...rest }
-    if (dietary) {
-      payload.is_vegetarian = dietary.is_vegetarian
-      payload.is_vegan = dietary.is_vegan
-      payload.is_gluten_free = dietary.is_gluten_free
-      payload.is_lactose_free = dietary.is_lactose_free
-      payload.is_spicy = dietary.is_spicy
-    }
+  // Modify the `updateMenuItem` method to include discount fields
+  static async updateMenuItem(itemData: {
+    id: number
+    name?: string
+    description?: string
+    price?: number
+    image_url?: string
+    category_id?: number
+    is_available?: boolean
+    is_featured?: boolean
+    is_vegetarian?: boolean
+    is_vegan?: boolean
+    is_gluten_free?: boolean
+    is_lactose_free?: boolean
+    is_spicy?: boolean
+    calories?: number
+    preparation_time?: number
+    ingredients?: string
+    allergens?: string
+    sort_order?: number
+    // --- NUEVA FUNCIONALIDAD: Campos de descuento ---
+    discount_percentage?: number | null
+    discount_start_date?: string | null
+    discount_end_date?: string | null
+    // --- FIN NUEVA FUNCIONALIDAD ---
+  }): Promise<ApiResponse> {
     const response = await fetch(getApiUrl("UPDATE_MENU_ITEM"), {
       method: "POST",
       headers: this.getAuthHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(itemData),
     })
     return this.handleResponse(response)
   }
 
+  // NUEVO MÉTODO: Eliminar ítem de menú
   static async deleteMenuItem(itemId: number): Promise<ApiResponse> {
     const response = await fetch(getApiUrl("DELETE_MENU_ITEM"), {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ id: itemId }),
     })
-
     return this.handleResponse(response)
   }
 
-  static async getMenuCategories(restaurantId: number, type?: "food" | "drink" | "both"): Promise<ApiResponse> {
-    // Añadir un timestamp para evitar la caché
-    const timestamp = new Date().getTime()
-
-    let url = `${getApiUrl("GET_MENU_CATEGORIES")}&restaurant_id=${restaurantId}&_t=${timestamp}`
-
-    if (type) {
-      url += `&type=${type}`
-    }
-
-    const response = await fetch(url, {
-      headers: this.getAuthHeaders(),
-      cache: "no-store", // Añadir esta opción para evitar la caché
-    })
-
-    return this.handleResponse(response)
-  }
-
+  // NUEVO MÉTODO: Añadir categoría de menú
   static async addMenuCategory(categoryData: {
     restaurant_id: number
     name: string
@@ -334,7 +393,33 @@ export class ApiClient {
       headers: this.getAuthHeaders(),
       body: JSON.stringify(categoryData),
     })
+    return this.handleResponse(response)
+  }
 
+  // NUEVO MÉTODO: Actualizar categoría de menú (si es necesario, no se pidió explícitamente pero es buena práctica)
+  static async updateMenuCategory(categoryData: {
+    id: number
+    name?: string
+    description?: string
+    type?: "food" | "drink" | "both"
+    sort_order?: number
+    is_active?: boolean
+  }): Promise<ApiResponse> {
+    const response = await fetch(getApiUrl("UPDATE_MENU_CATEGORY"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(categoryData),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Eliminar categoría de menú (si es necesario)
+  static async deleteMenuCategory(categoryId: number): Promise<ApiResponse> {
+    const response = await fetch(getApiUrl("DELETE_MENU_CATEGORY"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ id: categoryId }),
+    })
     return this.handleResponse(response)
   }
 

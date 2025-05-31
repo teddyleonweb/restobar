@@ -3,12 +3,12 @@
 import type React from "react"
 import { useState, useRef } from "react"
 import Image from "next/image"
-import { Upload, X, Camera, Loader2, AlertCircle } from "lucide-react"
-import { getApiUrl } from "@/lib/api-config"
+import { Upload, X, Camera, Loader2, AlertCircle, FileText } from "lucide-react"
+import { ApiClient } from "@/lib/api-client"
 
-interface ImageUploadProps {
-  currentImage?: string
-  onImageChange: (imageUrl: string) => void
+interface MenuFileUploadProps {
+  currentFileUrl?: string
+  onFileUpload: (fileUrl: string, fileType: "image" | "pdf", fileName: string) => void
   label: string
   aspectRatio?: "square" | "wide" | "tall"
   maxSize?: number // in MB
@@ -17,16 +17,16 @@ interface ImageUploadProps {
   restaurantId?: number
 }
 
-export default function ImageUpload({
-  currentImage,
-  onImageChange,
+export default function MenuFileUpload({
+  currentFileUrl,
+  onFileUpload,
   label,
-  aspectRatio = "square",
-  maxSize = 5,
-  acceptedFormats = ["image/jpeg", "image/png", "image/webp"],
+  aspectRatio = "wide",
+  maxSize = 10, // Increased for PDFs
+  acceptedFormats = ["image/jpeg", "image/png", "image/webp", "application/pdf"],
   placeholder,
   restaurantId,
-}: ImageUploadProps) {
+}: MenuFileUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState("")
@@ -42,7 +42,7 @@ export default function ImageUpload({
   const validateFile = (file: File): string | null => {
     // Check file type
     if (!acceptedFormats.includes(file.type)) {
-      return `Formato no válido. Acepta: ${acceptedFormats.map((f) => f.split("/")[1]).join(", ")}`
+      return `Formato no válido. Acepta: ${acceptedFormats.map((f) => f.split("/").pop()).join(", ")}`
     }
 
     // Check file size
@@ -54,34 +54,15 @@ export default function ImageUpload({
     return null
   }
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const token = localStorage.getItem("tubarresto_token")
-    if (!token) {
-      throw new Error("No autorizado")
-    }
-
-    // Validar restaurant_id antes de enviar
+  const uploadFile = async (file: File): Promise<{ url: string; fileType: "image" | "pdf"; fileName: string }> => {
     if (!restaurantId || restaurantId <= 0 || isNaN(Number(restaurantId))) {
-      console.error("Invalid restaurant ID:", restaurantId, typeof restaurantId)
       throw new Error(`ID de restaurante inválido: ${restaurantId}. Por favor, cierra y vuelve a abrir el modal.`)
     }
 
     const formData = new FormData()
-    formData.append("image", file)
-    formData.append("restaurant_id", restaurantId?.toString() || "")
-    formData.append("category", "gallery") // Default category for all images
-    formData.append("title", file.name.split(".")[0]) // Usar nombre del archivo como título
-
-    // Debug: Log the data being sent
-    console.log("Uploading image with:", {
-      restaurantId,
-      restaurantIdType: typeof restaurantId,
-      restaurantIdValid: !!(restaurantId && restaurantId > 0),
-      fileName: file.name,
-      fileSize: file.size,
-      hasToken: !!token,
-      formDataEntries: Array.from(formData.entries()),
-    })
+    formData.append("menu_file", file) // Use 'menu_file' as the key for the API
+    formData.append("restaurant_id", restaurantId.toString())
+    formData.append("title", file.name.split(".")[0]) // Use file name as title
 
     // Simulate progress for better UX
     const progressInterval = setInterval(() => {
@@ -89,43 +70,24 @@ export default function ImageUpload({
     }, 200)
 
     try {
-      const apiUrl = getApiUrl("UPLOAD_IMAGE")
-      console.log("Uploading to:", apiUrl)
-
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
+      const result = await ApiClient.uploadMenuFile(formData)
 
       clearInterval(progressInterval)
       setUploadProgress(100)
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("Upload error response:", errorText, "Status:", response.status)
-
-        try {
-          const errorData = JSON.parse(errorText)
-          throw new Error(errorData.error || `Error del servidor: ${response.status}`)
-        } catch (parseError) {
-          throw new Error(`Error del servidor: ${response.status}. Detalles: ${errorText.substring(0, 200)}`)
+      if (result.success && result.data?.menu) {
+        const menuData = result.data.menu
+        return {
+          url: menuData.url,
+          fileType: menuData.fileType,
+          fileName: menuData.fileName,
         }
-      }
-
-      const result = await response.json()
-      console.log("Upload result:", result)
-
-      if (result.success) {
-        return result.data.image.url
       } else {
-        throw new Error(result.error || "Error al subir imagen")
+        throw new Error(result.error || "Error al subir archivo de menú")
       }
     } catch (error) {
       clearInterval(progressInterval)
-      console.error("Upload error:", error)
+      console.error("Upload menu file error:", error)
       throw error
     }
   }
@@ -133,9 +95,7 @@ export default function ImageUpload({
   const handleFileSelect = async (file: File) => {
     setError("")
 
-    // Validar restaurant ID - make it more flexible
     if (!restaurantId || restaurantId === 0 || isNaN(Number(restaurantId))) {
-      console.error("Invalid restaurant ID:", restaurantId, typeof restaurantId)
       setError(`ID de restaurante inválido: ${restaurantId}. Por favor, cierra y vuelve a abrir el modal.`)
       return
     }
@@ -150,11 +110,11 @@ export default function ImageUpload({
     setUploadProgress(0)
 
     try {
-      const imageUrl = await uploadImage(file)
-      onImageChange(imageUrl)
+      const { url, fileType, fileName } = await uploadFile(file)
+      onFileUpload(url, fileType, fileName)
     } catch (err) {
-      console.error("Error uploading image:", err)
-      setError(err instanceof Error ? err.message : "Error al subir la imagen")
+      console.error("Error uploading menu file:", err)
+      setError(err instanceof Error ? err.message : "Error al subir el archivo de menú")
     } finally {
       setIsUploading(false)
       setUploadProgress(0)
@@ -187,29 +147,57 @@ export default function ImageUpload({
     }
   }
 
-  const removeImage = () => {
-    onImageChange("")
+  const removeFile = () => {
+    onFileUpload("", "image", "") // Reset to empty
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
   }
+
+  const isImage =
+    currentFileUrl &&
+    (currentFileUrl.endsWith(".jpg") ||
+      currentFileUrl.endsWith(".jpeg") ||
+      currentFileUrl.endsWith(".png") ||
+      currentFileUrl.endsWith(".webp"))
+  const isPdf = currentFileUrl && currentFileUrl.endsWith(".pdf")
 
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-gray-700">{label}</label>
 
       <div className="relative">
-        {currentImage ? (
+        {currentFileUrl ? (
           <div
             className={`relative ${aspectRatioClasses[aspectRatio]} w-full max-w-xs rounded-lg overflow-hidden border-2 border-gray-200 group`}
           >
-            <Image
-              src={currentImage || "/placeholder.svg"}
-              alt={label}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
+            {isImage ? (
+              <Image
+                src={currentFileUrl || "/placeholder.svg"}
+                alt={label}
+                fill
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              />
+            ) : isPdf ? (
+              <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100 text-red-500">
+                <FileText className="w-16 h-16 mb-2" />
+                <p className="text-sm font-medium">Archivo PDF</p>
+                <a
+                  href={currentFileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline mt-1"
+                >
+                  Ver PDF
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100 text-gray-500">
+                <AlertCircle className="w-16 h-16 mb-2" />
+                <p className="text-sm font-medium">Archivo no reconocido</p>
+              </div>
+            )}
 
             {/* Overlay with actions */}
             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex items-center justify-center">
@@ -217,14 +205,14 @@ export default function ImageUpload({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="bg-white text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                  title="Cambiar imagen"
+                  title="Cambiar archivo"
                 >
                   <Camera className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={removeImage}
+                  onClick={removeFile}
                   className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
-                  title="Eliminar imagen"
+                  title="Eliminar archivo"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -279,7 +267,7 @@ export default function ImageUpload({
             ) : (
               <div className="text-center p-4">
                 <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600 mb-1">Arrastra una imagen aquí</p>
+                <p className="text-sm text-gray-600 mb-1">Arrastra un archivo aquí</p>
                 <p className="text-xs text-gray-500 mb-2">o haz clic para seleccionar</p>
                 {placeholder && <p className="text-xs text-gray-400">{placeholder}</p>}
               </div>
@@ -307,7 +295,7 @@ export default function ImageUpload({
 
       {/* File format info */}
       <div className="text-xs text-gray-500">
-        Formatos: {acceptedFormats.map((f) => f.split("/")[1].toUpperCase()).join(", ")} • Máximo {maxSize}MB
+        Formatos: {acceptedFormats.map((f) => f.split("/").pop()?.toUpperCase()).join(", ")} • Máximo {maxSize}MB
       </div>
     </div>
   )

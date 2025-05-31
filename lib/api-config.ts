@@ -1,48 +1,43 @@
-// Configuración de la API para Tu Bar Resto
-const API_CONFIG = {
-  BASE_URL: "https://tubarresto.somediave.com/api.php",
+// Centralized API configuration
+export const API_CONFIG = {
+  // Assuming NEXT_PUBLIC_API_BASE_URL might already include /api.php.
+  // If your actual API base is just "https://tubarresto.somediave.com",
+  // you should set NEXT_PUBLIC_API_BASE_URL to that value in Vercel,
+  // and then revert the ENDPOINTS below to start with "/api.php".
+  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || "https://tubarresto.somediave.com/api.php",
   ENDPOINTS: {
-    // Autenticación
-    REGISTER: "register",
-    LOGIN: "login",
-
-    // Restaurantes
-    ADD_RESTAURANT: "add-restaurant",
-    UPDATE_RESTAURANT: "update-restaurant",
-    DELETE_RESTAURANT: "delete-restaurant",
-
-    // Imágenes
-    UPLOAD_IMAGE: "upload-image",
-    ADD_RESTAURANT_IMAGE: "add-restaurant-image",
-    UPDATE_RESTAURANT_MAIN_IMAGE: "update-restaurant-main-image",
-    GET_RESTAURANT_IMAGES: "get-restaurant-images",
-    DELETE_RESTAURANT_IMAGE: "delete-restaurant-image",
-
-    // Menú - Elementos
-    GET_MENU_ITEMS: "get-menu-items",
-    ADD_MENU_ITEM: "add-menu-item",
-    UPDATE_MENU_ITEM: "update-menu-item",
-    DELETE_MENU_ITEM: "delete-menu-item",
-
-    // Menú - Categorías
-    GET_MENU_CATEGORIES: "get-menu-categories",
-    ADD_MENU_CATEGORY: "add-menu-category",
-    UPDATE_MENU_CATEGORY: "update-menu-category",
-    DELETE_MENU_CATEGORY: "delete-menu-category",
-
-    // Estado
-    STATUS: "status",
+    REGISTER: "?action=register",
+    LOGIN: "?action=login",
+    ADD_RESTAURANT: "?action=add-restaurant",
+    UPDATE_RESTAURANT: "?action=update-restaurant",
+    DELETE_RESTAURANT: "?action=delete-restaurant",
+    UPLOAD_IMAGE: "?action=upload-image",
+    UPLOAD_MENU_FILE: "?action=upload-menu-file",
+    GET_RESTAURANT_MENUS: "?action=get-restaurant-menus",
+    DELETE_RESTAURANT_MENU: "?action=delete-restaurant-menu",
+    STATUS: "?action=status",
+    GET_MENU_ITEMS: "?action=get-menu-items",
+    GET_MENU_CATEGORIES: "?action=get-menu-categories",
+    ADD_MENU_ITEM: "?action=add-menu-item",
+    UPDATE_MENU_ITEM: "?action=update-menu-item",
+    DELETE_MENU_ITEM: "?action=delete-menu-item",
+    ADD_MENU_CATEGORY: "?action=add-menu-category",
+    UPDATE_MENU_CATEGORY: "?action=update-menu-category",
+    DELETE_MENU_CATEGORY: "?action=delete-menu-category",
   },
-}
+} as const
 
+// Helper function to get API URLs
 export function getApiUrl(endpoint: keyof typeof API_CONFIG.ENDPOINTS): string {
-  const action = API_CONFIG.ENDPOINTS[endpoint]
-  return `${API_CONFIG.BASE_URL}?action=${action}`
+  return `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS[endpoint]}`
 }
 
-export function getCustomApiUrl(path: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || API_CONFIG.BASE_URL.split("?")[0]
-  return `${baseUrl}${path}`
+// Helper function for custom endpoints
+export function getCustomApiUrl(customEndpoint: string): string {
+  return `${API_CONFIG.BASE_URL}${customEndpoint}`
 }
 
-export { API_CONFIG }
+// Get base API URL
+export function getBaseApiUrl(): string {
+  return API_CONFIG.BASE_URL
+}

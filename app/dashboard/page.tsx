@@ -7,11 +7,12 @@ import Image from "next/image"
 import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X } from "lucide-react"
 import ImageUpload from "@/components/image-upload"
 import RestaurantImageGallery from "@/components/restaurant-image-gallery"
+import RestaurantMenuGallery from "@/components/restaurant-menu-gallery"
+import MenuItemManagement from "@/components/menu-item-management" // NUEVO: Importar el nuevo componente
 
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
 import { getApiUrl } from "@/lib/api-config"
-import MenuManagement from "@/components/menu-management"
 
 interface UserType {
   id: number
@@ -23,6 +24,23 @@ interface UserType {
   email_verified: boolean
 }
 
+// Add this interface near the existing `Restaurant` interface
+interface RestaurantMenu {
+  id: string
+  title: string
+  description?: string
+  url: string
+  fileType: "image" | "pdf"
+  fileName: string
+  fileSize: number
+  mimeType: string
+  width?: number
+  height?: number
+  sortOrder: number
+  createdAt: string
+}
+
+// Update the `Restaurant` interface to include `menus`
 interface Restaurant {
   id: number
   name: string
@@ -39,6 +57,7 @@ interface Restaurant {
   logo_url?: string
   cover_image_url?: string
   images?: RestaurantImage[]
+  menus?: RestaurantMenu[] // NUEVO: Add menus array
 }
 
 interface RestaurantImage {
@@ -72,11 +91,16 @@ export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [showImageGallery, setShowImageGallery] = useState(false)
 
+  // Add these new state variables inside the `Dashboard` component
+  const [selectedRestaurantMenus, setSelectedRestaurantMenus] = useState<RestaurantMenu[] | null>(null)
+  const [showMenuGallery, setShowMenuGallery] = useState(false)
+
+  // NUEVO: Estado para el modal de gestión de ítems de menú
+  const [showMenuItemManagement, setShowMenuItemManagement] = useState(false)
+  const [menuManagementKey, setMenuManagementKey] = useState(0) // NUEVO: Estado para la clave del modal
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
-
-  const [showMenuManagement, setShowMenuManagement] = useState(false)
-  const [selectedRestaurantForMenu, setSelectedRestaurantForMenu] = useState<Restaurant | null>(null)
 
   useEffect(() => {
     // Verificar si el usuario está autenticado
@@ -289,7 +313,7 @@ export default function Dashboard() {
           description: result.error || "No se pudo eliminar el restaurante.",
           variant: "destructive",
         })
-        setMessage({ type: "error", text: "Error al eliminar restaurante" })
+        setMessage({ type: "error", text: result.error || "Error al eliminar restaurante" })
       }
     } catch (error) {
       console.error("Network error:", error)
@@ -345,14 +369,34 @@ export default function Dashboard() {
     }
   }
 
+  // Add this new function inside the `Dashboard` component
+  const handleRestaurantMenusChange = (menus: RestaurantMenu[]) => {
+    if (selectedRestaurant) {
+      const updatedRestaurant = { ...selectedRestaurant, menus }
+      const updatedRestaurants = restaurants.map((r) => (r.id === selectedRestaurant.id ? updatedRestaurant : r))
+      setRestaurants(updatedRestaurants)
+      setSelectedRestaurant(updatedRestaurant)
+      localStorage.setItem("tubarresto_restaurants", JSON.stringify(updatedRestaurants))
+    }
+  }
+
   const openImageGallery = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant)
     setShowImageGallery(true)
   }
 
-  const openMenuManagement = (restaurant: Restaurant) => {
-    setSelectedRestaurantForMenu(restaurant)
-    setShowMenuManagement(true)
+  // Add this new function inside the `Dashboard` component
+  const openMenuGallery = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant) // Keep selectedRestaurant for context
+    setSelectedRestaurantMenus(restaurant.menus || []) // Set menus for the gallery
+    setShowMenuGallery(true)
+  }
+
+  // NUEVO: Función para abrir el modal de gestión de ítems de menú
+  const openMenuItemManagement = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant)
+    setMenuManagementKey((prev) => prev + 1) // Incrementa la clave para forzar el re-montaje
+    setShowMenuItemManagement(true)
   }
 
   if (isLoading) {
@@ -579,10 +623,17 @@ export default function Dashboard() {
                             Gestionar Imágenes
                           </button>
                           <button
-                            onClick={() => openMenuManagement(restaurant)}
-                            className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                            onClick={() => openMenuGallery(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
                           >
-                            Gestionar Menú
+                            Gestionar Menús (PDF/Imagen)
+                          </button>
+                          {/* NUEVO BOTÓN: Gestionar Ítems de Menú */}
+                          <button
+                            onClick={() => openMenuItemManagement(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Gestionar Ítems de Menú (Manual)
                           </button>
                           <button
                             onClick={() => openDeleteConfirm(restaurant)}
@@ -860,6 +911,41 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* RestaurantMenuGallery Modal */}
+        {showMenuGallery && selectedRestaurant && selectedRestaurantMenus && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Menús de {selectedRestaurant.name}</h3>
+                  <p className="text-sm text-gray-600">Sube y gestiona los menús de tu restaurante (imágenes o PDFs)</p>
+                </div>
+                <button onClick={() => setShowMenuGallery(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <RestaurantMenuGallery
+                  restaurantId={selectedRestaurant.id}
+                  menus={selectedRestaurantMenus}
+                  onMenusChange={handleRestaurantMenusChange}
+                  canEdit={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NUEVO: MenuItemManagement Modal */}
+        {showMenuItemManagement && selectedRestaurant && (
+          <MenuItemManagement
+            key={menuManagementKey} // Añade esta línea
+            restaurantId={selectedRestaurant.id}
+            onClose={() => setShowMenuItemManagement(false)}
+          />
+        )}
+
         {/* Modal de confirmación de eliminación */}
         {showDeleteConfirm && restaurantToDelete && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -897,30 +983,6 @@ export default function Dashboard() {
                 >
                   Eliminar
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Menu Management Modal */}
-        {showMenuManagement && selectedRestaurantForMenu && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
-              <div className="flex justify-between items-center p-6 border-b border-gray-200">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Menú de {selectedRestaurantForMenu.name}</h3>
-                  <p className="text-sm text-gray-600">Gestiona platos, bebidas y categorías de tu restaurante</p>
-                </div>
-                <button onClick={() => setShowMenuManagement(false)} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-                <MenuManagement
-                  restaurantId={selectedRestaurantForMenu.id}
-                  restaurantName={selectedRestaurantForMenu.name}
-                />
               </div>
             </div>
           </div>
