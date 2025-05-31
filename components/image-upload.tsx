@@ -60,17 +60,10 @@ export default function ImageUpload({
       throw new Error("No autorizado")
     }
 
-    // Validar restaurant_id antes de enviar
-    if (!restaurantId || restaurantId <= 0 || isNaN(Number(restaurantId))) {
-      console.error("Invalid restaurant ID:", restaurantId, typeof restaurantId)
-      throw new Error(`ID de restaurante inválido: ${restaurantId}. Por favor, cierra y vuelve a abrir el modal.`)
-    }
-
     const formData = new FormData()
     formData.append("image", file)
     formData.append("restaurant_id", restaurantId?.toString() || "")
     formData.append("category", "gallery") // Default category for all images
-    formData.append("title", file.name.split(".")[0]) // Usar nombre del archivo como título
 
     // Debug: Log the data being sent
     console.log("Uploading image with:", {
@@ -89,10 +82,7 @@ export default function ImageUpload({
     }, 200)
 
     try {
-      const apiUrl = getApiUrl("UPLOAD_IMAGE")
-      console.log("Uploading to:", apiUrl)
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch(getApiUrl("UPLOAD_IMAGE"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -105,13 +95,13 @@ export default function ImageUpload({
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("Upload error response:", errorText, "Status:", response.status)
+        console.error("Upload error response:", errorText)
 
         try {
           const errorData = JSON.parse(errorText)
-          throw new Error(errorData.error || `Error del servidor: ${response.status}`)
+          throw new Error(errorData.error || "Error al subir imagen")
         } catch (parseError) {
-          throw new Error(`Error del servidor: ${response.status}. Detalles: ${errorText.substring(0, 200)}`)
+          throw new Error(`Error del servidor: ${response.status}`)
         }
       }
 
@@ -133,8 +123,8 @@ export default function ImageUpload({
   const handleFileSelect = async (file: File) => {
     setError("")
 
-    // Validar restaurant ID - make it more flexible
-    if (!restaurantId || restaurantId === 0 || isNaN(Number(restaurantId))) {
+    // Validate restaurant ID - make it more flexible
+    if (!restaurantId || restaurantId === 0 || isNaN(restaurantId)) {
       console.error("Invalid restaurant ID:", restaurantId, typeof restaurantId)
       setError(`ID de restaurante inválido: ${restaurantId}. Por favor, cierra y vuelve a abrir el modal.`)
       return

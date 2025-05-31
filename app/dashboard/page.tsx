@@ -11,6 +11,7 @@ import RestaurantImageGallery from "@/components/restaurant-image-gallery"
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
 import { getApiUrl } from "@/lib/api-config"
+import MenuManagement from "@/components/menu-management"
 
 interface UserType {
   id: number
@@ -73,6 +74,9 @@ export default function Dashboard() {
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
+
+  const [showMenuManagement, setShowMenuManagement] = useState(false)
+  const [selectedRestaurantForMenu, setSelectedRestaurantForMenu] = useState<Restaurant | null>(null)
 
   useEffect(() => {
     // Verificar si el usuario está autenticado
@@ -285,7 +289,7 @@ export default function Dashboard() {
           description: result.error || "No se pudo eliminar el restaurante.",
           variant: "destructive",
         })
-        setMessage({ type: "error", text: result.error || "Error al eliminar restaurante" })
+        setMessage({ type: "error", text: "Error al eliminar restaurante" })
       }
     } catch (error) {
       console.error("Network error:", error)
@@ -344,6 +348,11 @@ export default function Dashboard() {
   const openImageGallery = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant)
     setShowImageGallery(true)
+  }
+
+  const openMenuManagement = (restaurant: Restaurant) => {
+    setSelectedRestaurantForMenu(restaurant)
+    setShowMenuManagement(true)
   }
 
   if (isLoading) {
@@ -568,6 +577,12 @@ export default function Dashboard() {
                             className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
                           >
                             Gestionar Imágenes
+                          </button>
+                          <button
+                            onClick={() => openMenuManagement(restaurant)}
+                            className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            Gestionar Menú
                           </button>
                           <button
                             onClick={() => openDeleteConfirm(restaurant)}
@@ -882,6 +897,30 @@ export default function Dashboard() {
                 >
                   Eliminar
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Menu Management Modal */}
+        {showMenuManagement && selectedRestaurantForMenu && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Menú de {selectedRestaurantForMenu.name}</h3>
+                  <p className="text-sm text-gray-600">Gestiona platos, bebidas y categorías de tu restaurante</p>
+                </div>
+                <button onClick={() => setShowMenuManagement(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <MenuManagement
+                  restaurantId={selectedRestaurantForMenu.id}
+                  restaurantName={selectedRestaurantForMenu.name}
+                />
               </div>
             </div>
           </div>

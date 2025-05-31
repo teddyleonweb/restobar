@@ -1,28 +1,48 @@
-// Centralized API configuration
-export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || "https://tubarresto.somediave.com",
+// Configuración de la API para Tu Bar Resto
+const API_CONFIG = {
+  BASE_URL: "https://tubarresto.somediave.com/api.php",
   ENDPOINTS: {
-    REGISTER: "/api.php?action=register",
-    LOGIN: "/api.php?action=login",
-    ADD_RESTAURANT: "/api.php?action=add-restaurant",
-    UPDATE_RESTAURANT: "/api.php?action=update-restaurant",
-    DELETE_RESTAURANT: "/api.php?action=delete-restaurant",
-    UPLOAD_IMAGE: "/api.php?action=upload-image",
-    STATUS: "/api.php?action=status",
+    // Autenticación
+    REGISTER: "register",
+    LOGIN: "login",
+
+    // Restaurantes
+    ADD_RESTAURANT: "add-restaurant",
+    UPDATE_RESTAURANT: "update-restaurant",
+    DELETE_RESTAURANT: "delete-restaurant",
+
+    // Imágenes
+    UPLOAD_IMAGE: "upload-image",
+    ADD_RESTAURANT_IMAGE: "add-restaurant-image",
+    UPDATE_RESTAURANT_MAIN_IMAGE: "update-restaurant-main-image",
+    GET_RESTAURANT_IMAGES: "get-restaurant-images",
+    DELETE_RESTAURANT_IMAGE: "delete-restaurant-image",
+
+    // Menú - Elementos
+    GET_MENU_ITEMS: "get-menu-items",
+    ADD_MENU_ITEM: "add-menu-item",
+    UPDATE_MENU_ITEM: "update-menu-item",
+    DELETE_MENU_ITEM: "delete-menu-item",
+
+    // Menú - Categorías
+    GET_MENU_CATEGORIES: "get-menu-categories",
+    ADD_MENU_CATEGORY: "add-menu-category",
+    UPDATE_MENU_CATEGORY: "update-menu-category",
+    DELETE_MENU_CATEGORY: "delete-menu-category",
+
+    // Estado
+    STATUS: "status",
   },
-} as const
+}
 
-// Helper function to get API URLs
 export function getApiUrl(endpoint: keyof typeof API_CONFIG.ENDPOINTS): string {
-  return `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS[endpoint]}`
+  const action = API_CONFIG.ENDPOINTS[endpoint]
+  return `${API_CONFIG.BASE_URL}?action=${action}`
 }
 
-// Helper function for custom endpoints
-export function getCustomApiUrl(customEndpoint: string): string {
-  return `${API_CONFIG.BASE_URL}${customEndpoint}`
+export function getCustomApiUrl(path: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || API_CONFIG.BASE_URL.split("?")[0]
+  return `${baseUrl}${path}`
 }
 
-// Get base API URL
-export function getBaseApiUrl(): string {
-  return API_CONFIG.BASE_URL
-}
+export { API_CONFIG }

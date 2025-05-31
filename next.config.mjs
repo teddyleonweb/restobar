@@ -7,7 +7,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['tubarresto.com'],
     unoptimized: true,
   },
 }
