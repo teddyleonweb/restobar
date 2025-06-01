@@ -154,7 +154,11 @@ export class ApiClient {
       body: JSON.stringify(credentials),
     })
 
-    return this.handleResponse(response)
+    const result = await this.handleResponse(response)
+    if (result.success && result.data?.token) {
+      localStorage.setItem("tubarresto_token", result.data.token) // <-- Añade esta línea
+    }
+    return result
   }
 
   // Restaurant methods
