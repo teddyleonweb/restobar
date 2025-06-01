@@ -38,7 +38,7 @@ export interface Restaurant {
 
 // NUEVA INTERFACE: MenuItem
 export interface MenuItem {
-  id: number
+  id: string
   restaurant_id: number
   category_id?: number | null
   name: string
@@ -69,7 +69,7 @@ export interface MenuItem {
 
 // NUEVA INTERFACE: MenuCategory
 export interface MenuCategory {
-  id: number
+  id: number // Cambiado de string a number
   restaurant_id: number
   name: string
   description?: string | null

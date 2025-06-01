@@ -819,7 +819,7 @@ switch ($action) {
             $restaurant_id
         ));
 
-        $restaurant->menus = array_map(function($menu) {
+        $restaurant_menus = array_map(function($menu) { // Corrected variable name
             return [
                 'id' => $menu->id,
                 'title' => $menu->title,
@@ -1712,6 +1712,7 @@ switch ($action) {
                 'delete-menu-item' => 'POST - Eliminar plato/bebida',
                 'get-menu-categories' => 'GET - Obtener categorías de menú',
                 'add-menu-category' => 'POST - Agregar categoría de menú',
+                'delete-menu-category' => 'POST - Eliminar categoría de menú', // --- NUEVA FUNCIONALIDAD: Endpoint de eliminación de categoría ---
                 'status' => 'GET - Estado de la API'
             ],
             'database' => [
@@ -2297,6 +2298,70 @@ switch ($action) {
             ]
         ], 201);
         break;
+
+    // --- NUEVA FUNCIONALIDAD: ELIMINAR CATEGORÍA DE MENÚ ---
+    case 'delete-menu-category':
+        if ($method !== 'POST') {
+            send_error('Método no permitido', 405);
+        }
+        
+        // Verificar autenticación
+        $user_data = verify_token($token);
+        if (!$user_data) {
+            send_error('No autorizado', 401);
+        }
+        
+        // Validar campos requeridos
+        if (empty($data['id']) || !is_numeric($data['id']) || (int)$data['id'] <= 0) {
+            send_error('ID de la categoría inválido o faltante.');
+        }
+        
+        $category_id = (int) $data['id'];
+        
+        // Verificar que la categoría pertenece a un restaurante del usuario
+        global $wpdb;
+        $category = $wpdb->get_row($wpdb->prepare(
+            "SELECT mc.*, r.user_id 
+            FROM kvq_tubarresto_menu_categories mc
+            JOIN kvq_tubarresto_restaurants r ON mc.restaurant_id = r.id
+            WHERE mc.id = %d AND r.user_id = %d",
+            $category_id,
+            $user_data['id']
+        ));
+        
+        if (!$category) {
+            send_error('Categoría no encontrada o no autorizada', 404);
+        }
+        
+        // Antes de eliminar la categoría, desvincular los elementos del menú asociados
+        // Establecer category_id a NULL para los items que pertenecen a esta categoría
+        $wpdb->update(
+            'kvq_tubarresto_menu_items',
+            ['category_id' => null],
+            ['category_id' => $category_id],
+            ['%d'],
+            ['%d']
+        );
+
+        // Eliminar la categoría
+        $result = $wpdb->delete(
+            'kvq_tubarresto_menu_categories',
+            ['id' => $category_id],
+            ['%d']
+        );
+        
+        if ($result === false) {
+            send_error('Error al eliminar categoría: ' . $wpdb->last_error, 500);
+        } elseif ($result === 0) {
+            send_error('La categoría no fue encontrada para eliminar o ya ha sido eliminada.', 404);
+        }
+        
+        send_success([
+            'message' => 'Categoría eliminada exitosamente',
+            'category_id' => $category_id
+        ]);
+        break;
+    // --- FIN NUEVA FUNCIONALIDAD: ELIMINAR CATEGORÍA DE MENÚ ---
     
     default:
         send_error('Endpoint no encontrado', 404);

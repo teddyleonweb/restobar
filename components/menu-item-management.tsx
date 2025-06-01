@@ -72,7 +72,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
         setMenuCategories(categoriesResult.data?.categories || [])
 
         console.log("DEBUG: Menu items state after setMenuItems:", itemsResult.data?.menu_items || [])
-        console.log("DEBUG: Menu categories state after setMenuCategories:", itemsResult.data?.menu_categories || [])
+        console.log("DEBUG: Menu categories state after setMenuCategories:", categoriesResult.data?.categories || [])
       } else {
         setError(itemsResult.error || categoriesResult.error || "Error al cargar ítems y categorías del menú.")
         console.error("DEBUG: API response error during fetch:", itemsResult.error || categoriesResult.error)
@@ -262,7 +262,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     setIsLoading(true)
     setError(null)
     try {
-      const result = await ApiClient.deleteMenuItem(itemId)
+      const result = await ApiClient.deleteMenuItem(Number(itemId))
       console.log("DEBUG: Delete API call result:", result)
       if (result.success) {
         toast({
@@ -316,18 +316,16 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
       })
       console.log("DEBUG: Add Category API call result:", result)
 
-      if (result.success) {
+      if (result.success && result.data?.category) {
         toast({
           title: "Categoría agregada",
           description: result.message,
         })
         setShowAddCategoryModal(false)
-        // For new categories, we still need to re-fetch to get the database-assigned ID
-        console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful category save to get new ID.")
-        fetchMenuItemsAndCategories() // Re-fetch categories
+        // Actualización optimista del estado local
+        setMenuCategories((prev) => [...prev, result.data.category])
       } else {
         setError(result.error || "Error al agregar la categoría.")
-        console.error("DEBUG: API response error during category save:", result.error)
       }
     } catch (err) {
       console.error("DEBUG: Error saving category (catch block):", err)
@@ -346,18 +344,21 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     setIsLoading(true)
     setError(null)
     try {
-      const result = await ApiClient.deleteMenuCategory(categoryId)
+      const result = await ApiClient.deleteMenuCategory(Number(categoryId))
       console.log("DEBUG: Delete Category API call result:", result)
       if (result.success) {
         toast({
           title: "Categoría eliminada",
           description: result.message,
         })
-        // Optimistic update: remove the category from the local state
-        setMenuCategories((prevCategories) => prevCategories.filter((cat) => cat.id !== categoryId))
+        // Actualización optimista del estado local
+        setMenuCategories((prev) => prev.filter((cat) => cat.id !== categoryId))
+        // También actualizar items que podrían estar en esa categoría
+        setMenuItems((prevItems) =>
+          prevItems.map((item) => (item.category_id === categoryId ? { ...item, category_id: null } : item)),
+        )
       } else {
         setError(result.error || "Error al eliminar la categoría.")
-        console.error("DEBUG: API response error during category delete:", result.error)
       }
     } catch (err) {
       console.error("DEBUG: Error deleting category (catch block):", err)
@@ -367,9 +368,9 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     }
   }
 
-  const getCategoryName = (categoryId: number | null | undefined) => {
+  const getCategoryName = (categoryId: string | null | undefined) => {
     if (!categoryId) return "Sin categoría"
-    const category = menuCategories.find((cat) => cat.id === categoryId)
+    const category = menuCategories.find((cat) => cat.id === Number(categoryId))
     return category ? category.name : "Categoría desconocida"
   }
 
