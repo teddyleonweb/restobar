@@ -8,7 +8,7 @@ import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X }
 import ImageUpload from "@/components/image-upload"
 import RestaurantImageGallery from "@/components/restaurant-image-gallery"
 import RestaurantMenuGallery from "@/components/restaurant-menu-gallery"
-import MenuItemManagement from "@/components/menu-item-management" // NUEVO: Importar el nuevo componente
+import MenuAndCategoryManager from "@/components/menu-and-category-manager" // NUEVO: Importar el nuevo componente
 
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
@@ -95,9 +95,8 @@ export default function Dashboard() {
   const [selectedRestaurantMenus, setSelectedRestaurantMenus] = useState<RestaurantMenu[] | null>(null)
   const [showMenuGallery, setShowMenuGallery] = useState(false)
 
-  // NUEVO: Estado para el modal de gestión de ítems de menú
-  const [showMenuItemManagement, setShowMenuItemManagement] = useState(false)
-  const [menuManagementKey, setMenuManagementKey] = useState(0) // NUEVO: Estado para la clave del modal
+  // NUEVO: Estado para el modal de gestión de menú y categorías
+  const [showMenuAndCategoryManager, setShowMenuAndCategoryManager] = useState(false)
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
@@ -392,11 +391,10 @@ export default function Dashboard() {
     setShowMenuGallery(true)
   }
 
-  // NUEVO: Función para abrir el modal de gestión de ítems de menú
-  const openMenuItemManagement = (restaurant: Restaurant) => {
+  // NUEVO: Función para abrir el modal de gestión de menú y categorías
+  const openMenuAndCategoryManager = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant)
-    setMenuManagementKey((prev) => prev + 1) // Incrementa la clave para forzar el re-montaje
-    setShowMenuItemManagement(true)
+    setShowMenuAndCategoryManager(true)
   }
 
   if (isLoading) {
@@ -628,12 +626,12 @@ export default function Dashboard() {
                           >
                             Gestionar Menús (PDF/Imagen)
                           </button>
-                          {/* NUEVO BOTÓN: Gestionar Ítems de Menú */}
+                          {/* NUEVO BOTÓN: Gestionar Menú y Categorías */}
                           <button
-                            onClick={() => openMenuItemManagement(restaurant)}
+                            onClick={() => openMenuAndCategoryManager(restaurant)}
                             className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
                           >
-                            Gestionar Ítems de Menú (Manual)
+                            Gestionar Menú y Categorías (Manual)
                           </button>
                           <button
                             onClick={() => openDeleteConfirm(restaurant)}
@@ -937,12 +935,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* NUEVO: MenuItemManagement Modal */}
-        {showMenuItemManagement && selectedRestaurant && (
-          <MenuItemManagement
-            key={menuManagementKey} // Añade esta línea
+        {/* NUEVO: MenuAndCategoryManager Modal */}
+        {showMenuAndCategoryManager && selectedRestaurant && (
+          <MenuAndCategoryManager
             restaurantId={selectedRestaurant.id}
-            onClose={() => setShowMenuItemManagement(false)}
+            onClose={() => setShowMenuAndCategoryManager(false)}
           />
         )}
 

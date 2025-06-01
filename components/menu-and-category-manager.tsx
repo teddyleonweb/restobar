@@ -21,23 +21,26 @@ import {
   MilkOff,
   Flame,
   Star,
+  CalendarDays,
 } from "lucide-react"
 import { ApiClient, type MenuItem, type MenuCategory } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
 import ImageUpload from "@/components/image-upload"
 
-interface MenuItemManagementProps {
+interface MenuAndCategoryManagerProps {
   restaurantId: number
   onClose: () => void
 }
 
-export default function MenuItemManagement({ restaurantId, onClose }: MenuItemManagementProps) {
+export default function MenuAndCategoryManager({ restaurantId, onClose }: MenuAndCategoryManagerProps) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"items" | "categories">("items")
 
-  const [showAddEditItemModal, setShowAddEditItemModal] = useState(false)
+  // State for Item Form Modal
+  const [showItemFormModal, setShowItemFormModal] = useState(false)
   const [currentEditingItem, setCurrentEditingItem] = useState<MenuItem | null>(null)
   const [itemForm, setItemForm] = useState<Partial<MenuItem>>({
     type: "food",
@@ -48,54 +51,63 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     is_gluten_free: false,
     is_lactose_free: false,
     is_spicy: false,
+    price: 0,
+    name: "",
+    description: "",
+    image_url: "",
+    category_id: null,
+    calories: null,
+    preparation_time: null,
+    ingredients: "",
+    allergens: "",
+    sort_order: null,
+    discount_percentage: null,
+    discount_start_date: null,
+    discount_end_date: null,
   })
 
-  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false)
-  const [newCategoryForm, setNewCategoryForm] = useState<Partial<MenuCategory>>({
+  // State for Category Form Modal
+  const [showCategoryFormModal, setShowCategoryFormModal] = useState(false)
+  const [currentEditingCategory, setCurrentEditingCategory] = useState<MenuCategory | null>(null)
+  const [categoryForm, setCategoryForm] = useState<Partial<MenuCategory>>({
+    name: "",
+    description: "",
     type: "food",
+    sort_order: 0,
+    is_active: true,
   })
 
-  const fetchMenuItemsAndCategories = useCallback(async () => {
-    console.log("DEBUG: ENTERING fetchMenuItemsAndCategories function.") // NUEVO LOG
+  const fetchMenuData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      console.log("DEBUG: Attempting to fetch menu items and categories for restaurant ID:", restaurantId)
-      const itemsResult = await ApiClient.getMenuItems(restaurantId)
-      const categoriesResult = await ApiClient.getMenuCategories(restaurantId)
+      const [itemsResult, categoriesResult] = await Promise.all([
+        ApiClient.getMenuItems(restaurantId),
+        ApiClient.getMenuCategories(restaurantId),
+      ])
 
       if (itemsResult.success && categoriesResult.success) {
-        console.log("DEBUG: Raw menu items from API (after fetch):", itemsResult.data?.menu_items)
-        console.log("DEBUG: Raw menu categories from API (after fetch):", categoriesResult.data?.categories)
-
         setMenuItems(itemsResult.data?.menu_items || [])
         setMenuCategories(categoriesResult.data?.categories || [])
-
-        console.log("DEBUG: Menu items state after setMenuItems:", itemsResult.data?.menu_items || [])
-        console.log("DEBUG: Menu categories state after setMenuCategories:", itemsResult.data?.menu_categories || [])
       } else {
         setError(itemsResult.error || categoriesResult.error || "Error al cargar ítems y categorías del menú.")
-        console.error("DEBUG: API response error during fetch:", itemsResult.error || categoriesResult.error)
       }
     } catch (err) {
-      console.error("DEBUG: Error fetching menu data (catch block):", err)
+      console.error("Error fetching menu data:", err)
       setError("Error de conexión al cargar los datos del menú.")
     } finally {
       setIsLoading(false)
-      console.log("DEBUG: Exiting fetchMenuItemsAndCategories function. IsLoading set to false.") // NUEVO LOG
     }
   }, [restaurantId])
 
   useEffect(() => {
     if (restaurantId) {
-      console.log("DEBUG: useEffect triggered for restaurantId:", restaurantId) // NUEVO LOG
-      fetchMenuItemsAndCategories()
+      fetchMenuData()
     }
-  }, [restaurantId, fetchMenuItemsAndCategories])
+  }, [restaurantId, fetchMenuData])
 
-  // --- Item Management ---
+  // --- Item Management Functions ---
   const handleAddItemClick = () => {
-    console.log("DEBUG: handleAddItemClick called. Setting showAddEditItemModal to true.")
     setCurrentEditingItem(null)
     setItemForm({
       type: "food",
@@ -120,19 +132,17 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
       discount_start_date: null,
       discount_end_date: null,
     })
-    setShowAddEditItemModal(true)
+    setShowItemFormModal(true)
   }
 
   const handleEditItemClick = (item: MenuItem) => {
-    console.log("DEBUG: handleEditItemClick called. Setting showAddEditItemModal to true for item:", item.id)
     setCurrentEditingItem(item)
     setItemForm({
       ...item,
-      // Ensure dates are in YYYY-MM-DD format for input type="date"
       discount_start_date: item.discount_start_date ? item.discount_start_date.split("T")[0] : null,
       discount_end_date: item.discount_end_date ? item.discount_end_date.split("T")[0] : null,
     })
-    setShowAddEditItemModal(true)
+    setShowItemFormModal(true)
   }
 
   const handleItemFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -195,7 +205,6 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
       const itemDataToSend = {
         ...itemForm,
         restaurant_id: restaurantId,
-        // Ensure nulls for empty strings or 0 for numbers if API expects it
         description: itemForm.description || null,
         image_url: itemForm.image_url || null,
         category_id: itemForm.category_id || null,
@@ -207,48 +216,26 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
         discount_percentage: itemForm.discount_percentage || null,
         discount_start_date: itemForm.discount_start_date || null,
         discount_end_date: itemForm.discount_end_date || null,
-      } as MenuItem // Cast to MenuItem to satisfy type checking
-
-      console.log("DEBUG: Sending item data:", itemDataToSend)
+      } as MenuItem
 
       if (currentEditingItem) {
-        // It's an update
         result = await ApiClient.updateMenuItem({ id: currentEditingItem.id, ...itemDataToSend })
-        console.log("DEBUG: Update API call result:", result)
-        if (result.success) {
-          toast({
-            title: "Ítem actualizado",
-            description: result.message,
-          })
-          // Optimistic update: update the item in the local state
-          setMenuItems((prevItems) =>
-            prevItems.map((item) => (item.id === currentEditingItem.id ? { ...item, ...itemDataToSend } : item)),
-          )
-          setShowAddEditItemModal(false)
-        } else {
-          setError(result.error || "Error al actualizar el ítem del menú.")
-          console.error("DEBUG: API response error during update:", result.error)
-        }
       } else {
-        // It's an add
         result = await ApiClient.addMenuItem(itemDataToSend)
-        console.log("DEBUG: Add API call result:", result)
-        if (result.success) {
-          toast({
-            title: "Ítem agregado",
-            description: result.message,
-          })
-          setShowAddEditItemModal(false)
-          // For new items, we still need to re-fetch to get the database-assigned ID
-          console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful add to get new ID.")
-          fetchMenuItemsAndCategories()
-        } else {
-          setError(result.error || "Error al agregar el ítem del menú.")
-          console.error("DEBUG: API response error during add:", result.error)
-        }
+      }
+
+      if (result.success) {
+        toast({
+          title: currentEditingItem ? "Ítem actualizado" : "Ítem agregado",
+          description: result.message,
+        })
+        setShowItemFormModal(false)
+        fetchMenuData()
+      } else {
+        setError(result.error || "Error al guardar el ítem del menú.")
       }
     } catch (err) {
-      console.error("DEBUG: Error saving menu item (catch block):", err)
+      console.error("Error saving menu item:", err)
       setError(err instanceof Error ? err.message : "Error de conexión al guardar el ítem.")
     } finally {
       setIsLoading(false)
@@ -263,74 +250,85 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     setError(null)
     try {
       const result = await ApiClient.deleteMenuItem(itemId)
-      console.log("DEBUG: Delete API call result:", result)
       if (result.success) {
         toast({
           title: "Ítem eliminado",
           description: result.message,
         })
-        // Optimistic update: remove the item from the local state
-        setMenuItems((prevItems) => prevItems.filter((item) => item.id !== itemId))
+        fetchMenuData()
       } else {
         setError(result.error || "Error al eliminar el ítem del menú.")
-        console.error("DEBUG: API response error during delete:", result.error)
       }
     } catch (err) {
-      console.error("DEBUG: Error deleting menu item (catch block):", err)
+      console.error("Error deleting menu item:", err)
       setError("Error de conexión al eliminar el ítem.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  // --- Category Management ---
+  // --- Category Management Functions ---
   const handleAddCategoryClick = () => {
-    console.log("DEBUG: handleAddCategoryClick called. Setting showAddCategoryModal to true.")
-    setNewCategoryForm({ name: "", description: "", type: "food", sort_order: 0 })
-    setShowAddCategoryModal(true)
+    setCurrentEditingCategory(null)
+    setCategoryForm({ name: "", description: "", type: "food", sort_order: 0, is_active: true })
+    setShowCategoryFormModal(true)
   }
 
-  const handleNewCategoryFormChange = (
+  const handleEditCategoryClick = (category: MenuCategory) => {
+    setCurrentEditingCategory(category)
+    setCategoryForm({ ...category })
+    setShowCategoryFormModal(true)
+  }
+
+  const handleCategoryFormChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
-    const { name, value } = e.target
-    setNewCategoryForm((prev) => ({ ...prev, [name]: value }))
+    const { name, value, type } = e.target
+    if (type === "checkbox") {
+      setCategoryForm((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }))
+    } else if (name === "sort_order") {
+      setCategoryForm((prev) => ({ ...prev, [name]: value === "" ? null : Number(value) }))
+    } else {
+      setCategoryForm((prev) => ({ ...prev, [name]: value }))
+    }
   }
 
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!newCategoryForm.name || !newCategoryForm.type) {
+    if (!categoryForm.name || !categoryForm.type) {
       setError("Nombre y tipo de categoría son requeridos.")
       return
     }
 
     setIsLoading(true)
     try {
-      const result = await ApiClient.addMenuCategory({
+      let result
+      const categoryDataToSend = {
+        ...categoryForm,
         restaurant_id: restaurantId,
-        name: newCategoryForm.name,
-        description: newCategoryForm.description || undefined,
-        type: newCategoryForm.type as "food" | "drink" | "both",
-        sort_order: newCategoryForm.sort_order || undefined,
-      })
-      console.log("DEBUG: Add Category API call result:", result)
+        description: categoryForm.description || null,
+        sort_order: categoryForm.sort_order || 0,
+      } as MenuCategory
+
+      if (currentEditingCategory) {
+        result = await ApiClient.updateMenuCategory({ id: currentEditingCategory.id, ...categoryDataToSend })
+      } else {
+        result = await ApiClient.addMenuCategory(categoryDataToSend)
+      }
 
       if (result.success) {
         toast({
-          title: "Categoría agregada",
+          title: currentEditingCategory ? "Categoría actualizada" : "Categoría agregada",
           description: result.message,
         })
-        setShowAddCategoryModal(false)
-        // For new categories, we still need to re-fetch to get the database-assigned ID
-        console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful category save to get new ID.")
-        fetchMenuItemsAndCategories() // Re-fetch categories
+        setShowCategoryFormModal(false)
+        fetchMenuData()
       } else {
-        setError(result.error || "Error al agregar la categoría.")
-        console.error("DEBUG: API response error during category save:", result.error)
+        setError(result.error || "Error al guardar la categoría.")
       }
     } catch (err) {
-      console.error("DEBUG: Error saving category (catch block):", err)
+      console.error("Error saving category:", err)
       setError("Error de conexión al guardar la categoría.")
     } finally {
       setIsLoading(false)
@@ -347,20 +345,17 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     setError(null)
     try {
       const result = await ApiClient.deleteMenuCategory(categoryId)
-      console.log("DEBUG: Delete Category API call result:", result)
       if (result.success) {
         toast({
           title: "Categoría eliminada",
           description: result.message,
         })
-        // Optimistic update: remove the category from the local state
-        setMenuCategories((prevCategories) => prevCategories.filter((cat) => cat.id !== categoryId))
+        fetchMenuData()
       } else {
         setError(result.error || "Error al eliminar la categoría.")
-        console.error("DEBUG: API response error during category delete:", result.error)
       }
     } catch (err) {
-      console.error("DEBUG: Error deleting category (catch block):", err)
+      console.error("Error deleting category:", err)
       setError("Error de conexión al eliminar la categoría.")
     } finally {
       setIsLoading(false)
@@ -383,11 +378,33 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-gray-200">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Gestionar Ítems de Menú</h3>
-            <p className="text-sm text-gray-600">Añade, edita y organiza los platos y bebidas de tu restaurante.</p>
+            <h3 className="text-lg font-bold text-gray-900">Gestionar Menú y Categorías</h3>
+            <p className="text-sm text-gray-600">Añade, edita y organiza los platos, bebidas y sus categorías.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 bg-gray-50">
+          <button
+            className={`py-3 px-6 text-sm font-medium ${
+              activeTab === "items" ? "border-b-2 border-red-500 text-red-600" : "text-gray-600 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTab("items")}
+          >
+            Ítems del Menú
+          </button>
+          <button
+            className={`py-3 px-6 text-sm font-medium ${
+              activeTab === "categories"
+                ? "border-b-2 border-red-500 text-red-600"
+                : "text-gray-600 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTab("categories")}
+          >
+            Categorías
           </button>
         </div>
 
@@ -396,7 +413,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
           {isLoading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-              <p>Cargando ítems del menú...</p>
+              <p>Cargando datos del menú...</p>
             </div>
           ) : error ? (
             <div className="bg-red-100 text-red-700 border border-red-300 p-4 rounded-lg flex items-center space-x-2">
@@ -404,164 +421,192 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
               <span>{error}</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Categories Column */}
-              <div className="lg:col-span-1 bg-gray-50 p-4 rounded-lg border">
-                <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-semibold text-gray-900">Categorías ({menuCategories.length})</h4>
-                  <button
-                    onClick={handleAddCategoryClick}
-                    className="flex items-center text-red-500 hover:text-red-600 text-sm"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Nueva
-                  </button>
-                </div>
-                {menuCategories.length === 0 ? (
-                  <p className="text-sm text-gray-500">No hay categorías. Añade una para organizar tus ítems.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {menuCategories.map((category) => (
-                      <li
-                        key={category.id}
-                        className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border"
-                      >
-                        <div className="flex items-center space-x-2">
-                          {category.type === "food" && <Utensils className="w-4 h-4 text-gray-600" />}
-                          {category.type === "drink" && <Coffee className="w-4 h-4 text-gray-600" />}
-                          {category.type === "both" && <Tag className="w-4 h-4 text-gray-600" />}
-                          <span className="font-medium text-gray-800">{category.name}</span>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteCategory(category.id)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded-full"
-                          title="Eliminar categoría"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Menu Items Column */}
-              <div className="lg:col-span-2">
-                <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-semibold text-gray-900">Ítems del Menú ({menuItems.length})</h4>
-                  <button
-                    onClick={handleAddItemClick}
-                    className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors text-sm"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Ítem
-                  </button>
-                </div>
-
-                {menuItems.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                    <Utensils className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No hay ítems en el menú</h3>
-                    <p className="text-gray-600 mb-4">Agrega tu primer plato o bebida.</p>
+            <>
+              {activeTab === "items" && (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-semibold text-gray-900">Ítems del Menú ({menuItems.length})</h4>
                     <button
                       onClick={handleAddItemClick}
-                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+                      className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors text-sm"
                     >
+                      <Plus className="w-4 h-4 mr-2" />
                       Agregar Ítem
                     </button>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {menuItems.map((item) => (
-                      <div key={item.id} className="bg-white rounded-lg shadow-sm border overflow-hidden flex">
-                        {item.image_url && (
-                          <div className="relative w-24 h-24 flex-shrink-0">
-                            <Image
-                              src={item.image_url || "/placeholder.svg"}
-                              alt={item.name}
-                              fill
-                              className="object-cover"
-                              sizes="96px"
-                            />
-                          </div>
-                        )}
-                        <div className="p-3 flex-grow">
-                          <h5 className="font-semibold text-gray-900 text-base truncate">{item.name}</h5>
-                          <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
-                          <div className="flex items-center justify-between mt-2">
-                            <span className="font-bold text-lg text-red-500">€{item.price?.toFixed(2)}</span>
-                            <div className="flex space-x-1">
-                              {item.is_available ? (
-                                <span className="text-green-500" title="Disponible">
-                                  <CheckCircle className="w-4 h-4" />
-                                </span>
-                              ) : (
-                                <span className="text-gray-400" title="No disponible">
-                                  <CircleDot className="w-4 h-4" />
-                                </span>
-                              )}
-                              {item.is_featured && (
-                                <span className="text-yellow-500" title="Destacado">
-                                  <Star className="w-4 h-4" />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {item.discount_percentage && (
-                            <div className="text-xs text-green-600 mt-1 flex items-center">
-                              <Percent className="w-3 h-3 mr-1" />
-                              <span>{item.discount_percentage}% OFF</span>
-                              {item.discount_end_date && (
-                                <span className="ml-1">
-                                  hasta {new Date(item.discount_end_date).toLocaleDateString()}
-                                </span>
-                              )}
+
+                  {menuItems.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                      <Utensils className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No hay ítems en el menú</h3>
+                      <p className="text-gray-600 mb-4">Agrega tu primer plato o bebida.</p>
+                      <button
+                        onClick={handleAddItemClick}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Agregar Ítem
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {menuItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="bg-white rounded-lg shadow-sm border overflow-hidden flex flex-col"
+                        >
+                          {item.image_url && (
+                            <div className="relative w-full h-40">
+                              <Image
+                                src={item.image_url || "/placeholder.svg"}
+                                alt={item.name}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                              />
                             </div>
                           )}
-                          <div className="text-xs text-gray-500 mt-1">
-                            {getCategoryName(item.category_id)} • {item.type === "food" ? "Plato" : "Bebida"}
+                          <div className="p-4 flex-grow flex flex-col">
+                            <h5 className="font-semibold text-gray-900 text-lg truncate">{item.name}</h5>
+                            <p className="text-sm text-gray-600 line-clamp-2 mt-1 flex-grow">{item.description}</p>
+                            <div className="flex items-center justify-between mt-3">
+                              <span className="font-bold text-xl text-red-500">€{item.price?.toFixed(2)}</span>
+                              <div className="flex space-x-1">
+                                {item.is_available ? (
+                                  <span className="text-green-500" title="Disponible">
+                                    <CheckCircle className="w-5 h-5" />
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400" title="No disponible">
+                                    <CircleDot className="w-5 h-5" />
+                                  </span>
+                                )}
+                                {item.is_featured && (
+                                  <span className="text-yellow-500" title="Destacado">
+                                    <Star className="w-5 h-5" />
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {item.discount_percentage && (
+                              <div className="text-sm text-green-600 mt-2 flex items-center">
+                                <Percent className="w-4 h-4 mr-1" />
+                                <span>{item.discount_percentage}% OFF</span>
+                                {item.discount_end_date && (
+                                  <span className="ml-1 flex items-center">
+                                    <CalendarDays className="w-3 h-3 ml-2 mr-1" />
+                                    hasta {new Date(item.discount_end_date).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-500 mt-1">
+                              {getCategoryName(item.category_id)} • {item.type === "food" ? "Plato" : "Bebida"}
+                            </div>
+                            <div className="flex space-x-2 mt-4 pt-3 border-t border-gray-100">
+                              <button
+                                onClick={() => handleEditItemClick(item)}
+                                className="flex-1 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-md transition-colors text-sm"
+                                title="Editar ítem"
+                              >
+                                <Edit3 className="w-4 h-4 mr-1" /> Editar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="flex-1 flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 py-2 px-3 rounded-md transition-colors text-sm"
+                                title="Eliminar ítem"
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" /> Eliminar
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex space-x-2 mt-2">
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "categories" && (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-semibold text-gray-900">Categorías ({menuCategories.length})</h4>
+                    <button
+                      onClick={handleAddCategoryClick}
+                      className="flex items-center bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Nueva Categoría
+                    </button>
+                  </div>
+                  {menuCategories.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                      <Tag className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No hay categorías</h3>
+                      <p className="text-gray-600 mb-4">Añade una para organizar tus ítems.</p>
+                      <button
+                        onClick={handleAddCategoryClick}
+                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Agregar Categoría
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {menuCategories.map((category) => (
+                        <div
+                          key={category.id}
+                          className="bg-white p-4 rounded-lg shadow-sm border flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center space-x-2 mb-2">
+                              {category.type === "food" && <Utensils className="w-5 h-5 text-gray-600" />}
+                              {category.type === "drink" && <Coffee className="w-5 h-5 text-gray-600" />}
+                              {category.type === "both" && <Tag className="w-5 h-5 text-gray-600" />}
+                              <h5 className="font-semibold text-gray-900 text-lg">{category.name}</h5>
+                            </div>
+                            <p className="text-sm text-gray-600 line-clamp-2">
+                              {category.description || "Sin descripción."}
+                            </p>
+                            <div className="text-xs text-gray-500 mt-2">
+                              Tipo:{" "}
+                              {category.type === "food" ? "Platos" : category.type === "drink" ? "Bebidas" : "Ambos"}
+                            </div>
+                          </div>
+                          <div className="flex space-x-2 mt-4 pt-3 border-t border-gray-100">
                             <button
-                              onClick={() => handleEditItemClick(item)}
-                              className="text-blue-500 hover:text-blue-700 p-1 rounded-full"
-                              title="Editar ítem"
+                              onClick={() => handleEditCategoryClick(category)}
+                              className="flex-1 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-md transition-colors text-sm"
+                              title="Editar categoría"
                             >
-                              <Edit3 className="w-4 h-4" />
+                              <Edit3 className="w-4 h-4 mr-1" /> Editar
                             </button>
                             <button
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="text-red-500 hover:text-red-700 p-1 rounded-full"
-                              title="Eliminar ítem"
+                              onClick={() => handleDeleteCategory(category.id)}
+                              className="flex-1 flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 py-2 px-3 rounded-md transition-colors text-sm"
+                              title="Eliminar categoría"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4 mr-1" /> Eliminar
                             </button>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Add/Edit Item Modal */}
-        {showAddEditItemModal && (
+        {/* Item Form Modal */}
+        {showItemFormModal && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
                 <h3 className="text-lg font-bold text-gray-900">
                   {currentEditingItem ? "Editar Ítem del Menú" : "Agregar Nuevo Ítem al Menú"}
                 </h3>
-                <button
-                  onClick={() => {
-                    console.log("DEBUG: Closing Add/Edit Item Modal.")
-                    setShowAddEditItemModal(false)
-                  }}
-                  className="text-gray-400 hover:text-gray-600 p-1"
-                >
+                <button onClick={() => setShowItemFormModal(false)} className="text-gray-400 hover:text-gray-600 p-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -884,10 +929,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
               <div className="flex space-x-3 p-4 border-t border-gray-200 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => {
-                    console.log("DEBUG: Cancelling Add/Edit Item Modal.")
-                    setShowAddEditItemModal(false)
-                  }}
+                  onClick={() => setShowItemFormModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
                   disabled={isLoading}
                 >
@@ -906,17 +948,16 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
           </div>
         )}
 
-        {/* Add Category Modal */}
-        {showAddCategoryModal && (
+        {/* Category Form Modal */}
+        {showCategoryFormModal && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg w-full max-w-md">
               <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-                <h3 className="text-lg font-bold text-gray-900">Agregar Nueva Categoría</h3>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {currentEditingCategory ? "Editar Categoría" : "Agregar Nueva Categoría"}
+                </h3>
                 <button
-                  onClick={() => {
-                    console.log("DEBUG: Closing Add Category Modal.")
-                    setShowAddCategoryModal(false)
-                  }}
+                  onClick={() => setShowCategoryFormModal(false)}
                   className="text-gray-400 hover:text-gray-600 p-1"
                 >
                   <X className="w-5 h-5" />
@@ -938,8 +979,8 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
                     type="text"
                     id="categoryName"
                     name="name"
-                    value={newCategoryForm.name || ""}
-                    onChange={handleNewCategoryFormChange}
+                    value={categoryForm.name || ""}
+                    onChange={handleCategoryFormChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                     required
                   />
@@ -951,8 +992,8 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
                   <textarea
                     id="categoryDescription"
                     name="description"
-                    value={newCategoryForm.description || ""}
-                    onChange={handleNewCategoryFormChange}
+                    value={categoryForm.description || ""}
+                    onChange={handleCategoryFormChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                     rows={2}
                   />
@@ -964,8 +1005,8 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
                   <select
                     id="categoryType"
                     name="type"
-                    value={newCategoryForm.type || ""}
-                    onChange={handleNewCategoryFormChange}
+                    value={categoryForm.type || ""}
+                    onChange={handleCategoryFormChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                     required
                   >
@@ -982,19 +1023,26 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
                     type="number"
                     id="categorySortOrder"
                     name="sort_order"
-                    value={newCategoryForm.sort_order ?? ""}
-                    onChange={handleNewCategoryFormChange}
+                    value={categoryForm.sort_order ?? ""}
+                    onChange={handleCategoryFormChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                     min="0"
                   />
                 </div>
+                <div className="flex items-center text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    checked={categoryForm.is_active || false}
+                    onChange={handleCategoryFormChange}
+                    className="h-4 w-4 text-red-500 border-gray-300 rounded focus:ring-red-500"
+                  />
+                  <span className="ml-2">Activa</span>
+                </div>
                 <div className="flex space-x-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => {
-                      console.log("DEBUG: Cancelling Add Category Modal.")
-                      setShowAddCategoryModal(false)
-                    }}
+                    onClick={() => setShowCategoryFormModal(false)}
                     className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
                     disabled={isLoading}
                   >
@@ -1005,7 +1053,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
                     className="flex-1 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors text-sm"
                     disabled={isLoading}
                   >
-                    {isLoading ? "Guardando..." : "Agregar Categoría"}
+                    {isLoading ? "Guardando..." : currentEditingCategory ? "Actualizar Categoría" : "Agregar Categoría"}
                   </button>
                 </div>
               </form>
