@@ -22,7 +22,7 @@ import {
   Flame,
   Star,
 } from "lucide-react"
-import { ApiClient, type MenuItem, type MenuCategory } from "@/lib/api-client" // Corrected import path
+import { ApiClient, type MenuItem, type MenuCategory } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
 import ImageUpload from "@/components/image-upload"
 
@@ -56,7 +56,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
   })
 
   const fetchMenuItemsAndCategories = useCallback(async () => {
-    console.log("DEBUG: ENTERING fetchMenuItemsAndCategories function.") // NUEVO LOG
+    console.log("DEBUG: ENTERING fetchMenuItemsAndCategories function.")
     setIsLoading(true)
     setError(null)
     try {
@@ -82,13 +82,13 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
       setError("Error de conexión al cargar los datos del menú.")
     } finally {
       setIsLoading(false)
-      console.log("DEBUG: Exiting fetchMenuItemsAndCategories function. IsLoading set to false.") // NUEVO LOG
+      console.log("DEBUG: Exiting fetchMenuItemsAndCategories function. IsLoading set to false.")
     }
   }, [restaurantId])
 
   useEffect(() => {
     if (restaurantId) {
-      console.log("DEBUG: useEffect triggered for restaurantId:", restaurantId) // NUEVO LOG
+      console.log("DEBUG: useEffect triggered for restaurantId:", restaurantId)
       fetchMenuItemsAndCategories()
     }
   }, [restaurantId, fetchMenuItemsAndCategories])
@@ -271,7 +271,7 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
         })
         // Re-fetch items after successful deletion to ensure UI is in sync
         console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful delete.")
-        fetchMenuItemsAndCategories() // <-- This line was added/modified
+        fetchMenuItemsAndCategories()
       } else {
         setError(result.error || "Error al eliminar el ítem del menú.")
         console.error("DEBUG: API response error during delete:", result.error)
@@ -369,9 +369,13 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
     }
   }
 
-  const getCategoryName = (categoryId: string | null | undefined) => {
-    if (!categoryId) return "Sin categoría"
-    const category = menuCategories.find((cat) => cat.id === Number(categoryId))
+  const getCategoryName = (categoryId: number | null | undefined) => {
+    // Changed type to number | null | undefined
+    console.log("DEBUG: getCategoryName called with categoryId:", categoryId)
+    console.log("DEBUG: Current menuCategories:", menuCategories)
+    if (categoryId === null || categoryId === undefined) return "Sin categoría"
+    const category = menuCategories.find((cat) => cat.id === categoryId) // Removed Number() conversion as categoryId is already number
+    console.log("DEBUG: Found category:", category)
     return category ? category.name : "Categoría desconocida"
   }
 
