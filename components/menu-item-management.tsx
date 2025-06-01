@@ -220,11 +220,10 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
             title: "Ítem actualizado",
             description: result.message,
           })
-          // Optimistic update: update the item in the local state
-          setMenuItems((prevItems) =>
-            prevItems.map((item) => (item.id === currentEditingItem.id ? { ...item, ...itemDataToSend } : item)),
-          )
           setShowAddEditItemModal(false)
+          // Forzar recarga completa desde la base de datos
+          console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful update.")
+          fetchMenuItemsAndCategories()
         } else {
           setError(result.error || "Error al actualizar el ítem del menú.")
           console.error("DEBUG: API response error during update:", result.error)
@@ -323,8 +322,9 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
           description: result.message,
         })
         setShowAddCategoryModal(false)
-        // Actualización optimista del estado local
-        setMenuCategories((prev) => [...prev, result.data.category])
+        // Forzar recarga completa desde la base de datos
+        console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful category add.")
+        fetchMenuItemsAndCategories()
       } else {
         setError(result.error || "Error al agregar la categoría.")
       }
@@ -352,12 +352,9 @@ export default function MenuItemManagement({ restaurantId, onClose }: MenuItemMa
           title: "Categoría eliminada",
           description: result.message,
         })
-        // Actualización optimista del estado local
-        setMenuCategories((prev) => prev.filter((cat) => cat.id !== categoryId))
-        // También actualizar items que podrían estar en esa categoría
-        setMenuItems((prevItems) =>
-          prevItems.map((item) => (item.category_id === categoryId ? { ...item, category_id: null } : item)),
-        )
+        // Forzar recarga completa desde la base de datos
+        console.log("DEBUG: Calling fetchMenuItemsAndCategories after successful category delete.")
+        fetchMenuItemsAndCategories()
       } else {
         setError(result.error || "Error al eliminar la categoría.")
       }
