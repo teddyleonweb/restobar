@@ -1716,6 +1716,7 @@ switch ($action) {
               'delete-menu-item' => 'POST - Eliminar plato/bebida',
               'get-menu-categories' => 'GET - Obtener categorías de menú',
               'add-menu-category' => 'POST - Agregar categoría de menú',
+              'update-menu-category' => 'POST - Actualizar categoría de menú', // Agregado este endpoint
               'status' => 'GET - Estado de la API'
           ],
           'database' => [
@@ -1851,7 +1852,7 @@ switch ($action) {
                   'sort_order' => (int) $cat->sort_order
               ];
           }, $categories),
-          'total_items' => count($items_data)
+          'total_items' => count($menu_items ?? [])
       ]);
       break;
 
@@ -1888,6 +1889,12 @@ switch ($action) {
           send_error('Restaurante no encontrado o no autorizado', 404);
       }
       
+      // En el caso 'add-menu-item', justo antes de la inserción:
+      // Busca la línea: `$result = $wpdb->insert(`
+      // Y añade justo antes:
+      // `error_log("DEBUG: add-menu-item - Data received for type: " . $data['type']);`
+      error_log("DEBUG: add-menu-item - Data received for type: " . $data['type']);
+
       // Insertar plato/bebida
       $result = $wpdb->insert(
           'kvq_tubarresto_menu_items',
@@ -1919,6 +1926,14 @@ switch ($action) {
           ],
           ['%d', '%d', '%s', '%s', '%f', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%s', '%s', '%d', '%f', '%s', '%s']
       );
+      
+      // Después de cada `$result = $wpdb->insert(...)` o `$result = $wpdb->update(...)` en ambos casos (`add-menu-item` y `update-menu-item`), añade:
+      // `if ($result === false) {`
+      // `    error_log("DEBUG: DB Error on insert/update: " . $wpdb->last_error);`
+      // `}`
+      if ($result === false) {
+          error_log("DEBUG: DB Error on insert/update: " . $wpdb->last_error);
+      }
       
       if (!$result) {
           send_error('Error al agregar plato/bebida', 500);
@@ -2014,6 +2029,7 @@ switch ($action) {
           'description' => '%s',
           'price' => '%f',
           'image_url' => '%s',
+          'type' => '%s',
           'category_id' => '%d',
           'is_available' => '%d',
           'is_featured' => '%d',
@@ -2049,6 +2065,14 @@ switch ($action) {
       $update_data['updated_at'] = current_time('mysql');
       $update_format[] = '%s';
       
+      // En el caso 'update-menu-item', justo antes de la actualización:
+      // Busca la línea: `$result = $wpdb->update(`
+      // Y añade justo antes:
+      // `error_log("DEBUG: update-menu-item - Data received for type: " . (isset($data['type']) ? $data['type'] : 'N/A'));`
+      // `error_log("DEBUG: update-menu-item - Update data array: " . print_r($update_data, true));`
+      error_log("DEBUG: update-menu-item - Data received for type: " . (isset($data['type']) ? $data['type'] : 'N/A'));
+      error_log("DEBUG: update-menu-item - Update data array: " . print_r($update_data, true));
+
       // Actualizar item
       $result = $wpdb->update(
           'kvq_tubarresto_menu_items',
@@ -2057,6 +2081,14 @@ switch ($action) {
           $update_format,
           ['%d']
       );
+      
+      // Después de cada `$result = $wpdb->insert(...)` o `$result = $wpdb->update(...)` en ambos casos (`add-menu-item` y `update-menu-item`), añade:
+      // `if ($result === false) {`
+      // `    error_log("DEBUG: DB Error on insert/update: " . $wpdb->last_error);`
+      // `}`
+      if ($result === false) {
+          error_log("DEBUG: DB Error on insert/update: " . $wpdb->last_error);
+      }
       
       if ($result === false) {
           send_error('Error al actualizar plato/bebida', 500);
@@ -2304,6 +2336,105 @@ switch ($action) {
               'created_at' => $category->created_at
           ]
       ], 201);
+      break;
+
+  // NUEVO ENDPOINT: ACTUALIZAR CATEGORÍA DE MENÚ
+  case 'update-menu-category':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+      
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+      
+      // Validar campos requeridos
+      if (empty($data['id']) || !is_numeric($data['id']) || (int)$data['id'] <= 0) {
+          send_error('ID de la categoría inválido o faltante.');
+      }
+      
+      $category_id = (int) $data['id'];
+      
+      // Verificar que la categoría pertenece a un restaurante del usuario
+      global $wpdb;
+      $category = $wpdb->get_row($wpdb->prepare(
+          "SELECT mc.*, r.user_id 
+          FROM kvq_tubarresto_menu_categories mc
+          JOIN kvq_tubarresto_restaurants r ON mc.restaurant_id = r.id
+          WHERE mc.id = %d AND r.user_id = %d",
+          $category_id,
+          $user_data['id']
+      ));
+      
+      if (!$category) {
+          error_log("DEBUG: Failed to find or authorize menu category during update. Category ID: " . $category_id . ", User ID from token: " . $user_data['id']);
+          send_error('Categoría no encontrada o no autorizada', 404);
+      }
+      
+      // Preparar datos para actualizar
+      $update_data = [];
+      $update_format = [];
+      
+      $fields = [
+          'name' => '%s',
+          'description' => '%s',
+          'type' => '%s',
+          'sort_order' => '%d',
+          'is_active' => '%d'
+      ];
+      
+      foreach ($fields as $field => $format) {
+          if (isset($data[$field])) {
+              $update_data[$field] = $data[$field];
+              $update_format[] = $format;
+          }
+      }
+      
+      if (empty($update_data)) {
+          send_error('No hay datos para actualizar');
+      }
+      
+      // Agregar timestamp de actualización
+      $update_data['updated_at'] = current_time('mysql');
+      $update_format[] = '%s';
+      
+      error_log("DEBUG: update-menu-category - Update data array: " . print_r($update_data, true));
+
+      // Actualizar categoría
+      $result = $wpdb->update(
+          'kvq_tubarresto_menu_categories',
+          $update_data,
+          ['id' => $category_id],
+          $update_format,
+          ['%d']
+      );
+      
+      if ($result === false) {
+          error_log("DEBUG: DB Error on update-menu-category: " . $wpdb->last_error);
+          send_error('Error al actualizar categoría: ' . $wpdb->last_error, 500);
+      }
+      
+      // Obtener la categoría actualizada
+      $updated_category = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_menu_categories WHERE id = %d",
+          $category_id
+      ));
+      
+      send_success([
+          'message' => 'Categoría actualizada exitosamente',
+          'category' => [
+              'id' => (int) $updated_category->id,
+              'name' => $updated_category->name,
+              'description' => $updated_category->description,
+              'type' => $updated_category->type,
+              'sort_order' => (int) $updated_category->sort_order,
+              'is_active' => (bool) $updated_category->is_active,
+              'created_at' => $updated_category->created_at,
+              'updated_at' => $updated_category->updated_at
+          ]
+      ]);
       break;
   
   default:

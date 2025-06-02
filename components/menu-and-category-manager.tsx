@@ -137,16 +137,32 @@ export default function MenuAndCategoryManager({ restaurantId, onClose }: MenuAn
 
   const handleEditItemClick = (item: MenuItem) => {
     setCurrentEditingItem(item)
+
+    const formattedStartDate = item.discount_start_date
+      ? new Date(item.discount_start_date).toISOString().split("T")[0]
+      : ""
+    const formattedEndDate = item.discount_end_date ? new Date(item.discount_end_date).toISOString().split("T")[0] : ""
+
+    console.log("DEBUG: Original discount_start_date:", item.discount_start_date, "Formatted:", formattedStartDate)
+    console.log("DEBUG: Original discount_end_date:", item.discount_end_date, "Formatted:", formattedEndDate)
+
     setItemForm({
       ...item,
-      discount_start_date: item.discount_start_date ? item.discount_start_date.split("T")[0] : null,
-      discount_end_date: item.discount_end_date ? item.discount_end_date.split("T")[0] : null,
+      discount_start_date: formattedStartDate,
+      discount_end_date: formattedEndDate,
+      // Asegurar que las opciones dietéticas se carguen correctamente, priorizando item.dietary si existe
+      is_vegetarian: item.dietary?.is_vegetarian ?? item.is_vegetarian ?? false,
+      is_vegan: item.dietary?.is_vegan ?? item.is_vegan ?? false,
+      is_gluten_free: item.dietary?.is_gluten_free ?? item.is_gluten_free ?? false,
+      is_lactose_free: item.dietary?.is_lactose_free ?? item.is_lactose_free ?? false,
+      is_spicy: item.dietary?.is_spicy ?? item.is_spicy ?? false,
     })
     setShowItemFormModal(true)
   }
 
   const handleItemFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
+    console.log(`DEBUG: handleItemFormChange - Name: ${name}, Value: ${value}, Type: ${type}`)
     if (type === "checkbox") {
       setItemForm((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }))
     } else if (
@@ -218,6 +234,8 @@ export default function MenuAndCategoryManager({ restaurantId, onClose }: MenuAn
         discount_end_date: itemForm.discount_end_date || null,
       } as MenuItem
 
+      console.log("DEBUG: itemDataToSend before API call:", itemDataToSend)
+
       if (currentEditingItem) {
         result = await ApiClient.updateMenuItem({ id: currentEditingItem.id, ...itemDataToSend })
       } else {
@@ -229,8 +247,54 @@ export default function MenuAndCategoryManager({ restaurantId, onClose }: MenuAn
           title: currentEditingItem ? "Ítem actualizado" : "Ítem agregado",
           description: result.message,
         })
+
+        // Actualizar el estado local con los datos devueltos por la API
+        if (result.data && result.data.menu_item) {
+          const updatedItem = result.data.menu_item
+
+          if (currentEditingItem) {
+            // Actualizar ítem existente
+            setMenuItems((prevItems) =>
+              prevItems.map((item) =>
+                item.id === updatedItem.id
+                  ? {
+                      ...updatedItem,
+                      restaurant_id: restaurantId,
+                      is_available: updatedItem.is_available ?? true,
+                      is_featured: updatedItem.is_featured ?? false,
+                      is_vegetarian: updatedItem.dietary?.is_vegetarian ?? updatedItem.is_vegetarian ?? false,
+                      is_vegan: updatedItem.dietary?.is_vegan ?? updatedItem.is_vegan ?? false,
+                      is_gluten_free: updatedItem.dietary?.is_gluten_free ?? updatedItem.is_gluten_free ?? false,
+                      is_lactose_free: updatedItem.dietary?.is_lactose_free ?? updatedItem.is_lactose_free ?? false,
+                      is_spicy: updatedItem.dietary?.is_spicy ?? updatedItem.is_spicy ?? false,
+                      created_at: updatedItem.created_at || item.created_at,
+                      updated_at: new Date().toISOString(),
+                    }
+                  : item,
+              ),
+            )
+          } else {
+            // Agregar nuevo ítem
+            const newItem = {
+              ...updatedItem,
+              restaurant_id: restaurantId,
+              is_available: updatedItem.is_available ?? true,
+              is_featured: updatedItem.is_featured ?? false,
+              is_vegetarian: updatedItem.dietary?.is_vegetarian ?? updatedItem.is_vegetarian ?? false,
+              is_vegan: updatedItem.dietary?.is_vegan ?? updatedItem.is_vegan ?? false,
+              is_gluten_free: updatedItem.dietary?.is_gluten_free ?? updatedItem.is_gluten_free ?? false,
+              is_lactose_free: updatedItem.dietary?.is_lactose_free ?? updatedItem.is_lactose_free ?? false,
+              is_spicy: updatedItem.dietary?.is_spicy ?? updatedItem.is_spicy ?? false,
+              created_at: updatedItem.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+            setMenuItems((prevItems) => [...prevItems, newItem])
+          }
+        }
+
         setShowItemFormModal(false)
-        fetchMenuData()
+        // Comentamos fetchMenuData() para evitar refetch innecesario
+        // fetchMenuData()
       } else {
         setError(result.error || "Error al guardar el ítem del menú.")
       }
