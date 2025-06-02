@@ -338,47 +338,12 @@ export default function Login() {
               </div>
             </form>
 
-            {/* Botones de prueba */}
-            <div className="mt-6 space-y-2">
-              <button
-                type="button"
-                onClick={testConnection}
-                className="w-full text-sm text-gray-500 hover:text-red-500 underline py-2"
-              >
-                🔧 Probar conexión al servidor
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData({
-                    email: "test@example.com",
-                    password: "test123",
-                  })
-                  setMessage({ type: "info", text: "📝 Datos de prueba cargados" })
-                }}
-                className="w-full text-sm text-blue-500 hover:text-blue-600 underline py-2"
-              >
-                📝 Cargar datos de prueba
-              </button>
-            </div>
-
             <div className="mt-8 text-center text-sm text-gray-500">
               <p>
                 ¿No tienes una cuenta?{" "}
                 <Link href="/registro" className="text-red-500 hover:text-red-600">
                   Regístrate aquí
                 </Link>
-              </p>
-            </div>
-
-            {/* Información de debug */}
-            <div className="mt-6 p-3 bg-gray-50 rounded text-xs text-gray-600">
-              <p>
-                <strong>API URL:</strong> {getApiUrl("LOGIN")}
-              </p>
-              <p>
-                <strong>Endpoint:</strong> /api.php?action=login
               </p>
             </div>
           </div>
