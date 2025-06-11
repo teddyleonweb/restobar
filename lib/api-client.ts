@@ -34,6 +34,7 @@ export interface Restaurant {
   email?: string
   logo_url?: string
   cover_image_url?: string
+  slug?: string // Añadir slug aquí
 }
 
 // NUEVA INTERFACE: MenuItem
@@ -80,6 +81,34 @@ export interface MenuCategory {
   updated_at?: string
 }
 
+// NUEVA INTERFACE: Table
+export interface Table {
+  id: number
+  restaurantId: number
+  tableNumber: string
+  capacity: number
+  locationDescription?: string | null
+  qrCodeData: string // URL to the table's menu page
+  qrCodeUrl: string // URL to the generated QR image
+  isActive: boolean
+  createdAt: string
+  updatedAt?: string
+}
+
+// NUEVA INTERFACE: OrderItem para el envío del pedido
+export interface OrderItemPayload {
+  menu_item_id: number
+  quantity: number
+  item_notes?: string
+}
+
+// NUEVA INTERFACE: PlaceOrderResponse
+export interface PlaceOrderResponse {
+  order_id: number
+  total_amount: number
+  status: string
+}
+
 // Generic API client class
 export class ApiClient {
   private static getAuthHeaders(): HeadersInit {
@@ -91,20 +120,52 @@ export class ApiClient {
   }
 
   private static async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    const contentType = response.headers.get("content-type")
+    const isJson = contentType && contentType.includes("application/json")
+
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("API Error Response:", errorText)
+      console.error("API Error Response (Not OK):", errorText)
 
-      try {
-        const errorData = JSON.parse(errorText)
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
-      } catch (parseError) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      if (isJson) {
+        try {
+          const errorData = JSON.parse(errorText)
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+        } catch (parseError) {
+          // Fallback if error response is supposed to be JSON but is malformed
+          throw new Error(`HTTP ${response.status}: ${response.statusText} - Malformed error JSON: ${errorText}`)
+        }
+      } else {
+        // If not JSON, just use the status text or the raw text
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText || "Unknown error"}`)
       }
     }
 
-    const result = await response.json()
-    return result
+    // Handle OK responses
+    // Check for No Content (204) or empty body (Content-Length 0)
+    if (response.status === 204 || response.headers.get("Content-Length") === "0") {
+      return { success: true, message: "Operation successful, no content returned." } as ApiResponse<T>
+    }
+
+    if (isJson) {
+      try {
+        const result = await response.json()
+        return result
+      } catch (parseError) {
+        const rawText = await response.text()
+        console.error("API Error: Failed to parse JSON for OK response:", rawText, parseError)
+        throw new Error(`Failed to parse JSON response: ${rawText.substring(0, 100)}...`)
+      }
+    } else {
+      const rawText = await response.text()
+      console.warn("API Warning: Expected JSON but received non-JSON content for OK response:", rawText)
+      // If it's not JSON but the status is OK, we can assume success but no data
+      return {
+        success: true,
+        data: rawText as any,
+        message: "Operation successful, non-JSON content returned.",
+      } as ApiResponse<T>
+    }
   }
 
   // Authentication methods
@@ -143,7 +204,7 @@ export class ApiClient {
         status: string
         email_verified: boolean
       }
-      restaurants: (Restaurant & { menus?: RestaurantMenu[] })[] // Add menus here
+      restaurants: (Restaurant & { menus?: RestaurantMenu[]; tables?: Table[] })[] // Add menus and tables here
       token: string
     }>
   > {
@@ -235,6 +296,24 @@ export class ApiClient {
     const response = await fetch(getApiUrl("UPLOAD_MENU_FILE"), {
       method: "POST",
       headers, // Note: Content-Type is automatically set by browser for FormData
+      body: formData,
+    })
+
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Subir imagen de QR
+  static async uploadQrImage(formData: FormData): Promise<ApiResponse<{ qr_image_url: string; file_name: string }>> {
+    const token = localStorage.getItem("tubarresto_token")
+    const headers: HeadersInit = {}
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+
+    const response = await fetch(getApiUrl("UPLOAD_QR_IMAGE"), {
+      method: "POST",
+      headers,
       body: formData,
     })
 
@@ -419,6 +498,92 @@ export class ApiClient {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ id: categoryId }),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Añadir mesa
+  static async addTable(tableData: {
+    restaurant_id: number
+    table_number: string
+    capacity: number
+    location_description?: string
+    qr_code_url: string // AHORA SE ENVÍA DESDE EL FRONTEND
+  }): Promise<ApiResponse<{ table: Table }>> {
+    const response = await fetch(getApiUrl("ADD_TABLE"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(tableData),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Obtener mesas
+  static async getTables(restaurantId: number): Promise<ApiResponse<{ tables: Table[]; total_tables: number }>> {
+    const response = await fetch(getApiUrl("GET_TABLES") + `&restaurant_id=${restaurantId}`, {
+      method: "GET",
+      headers: this.getAuthHeaders(),
+      mode: "cors",
+      cache: "no-store",
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Actualizar mesa
+  static async updateTable(tableData: {
+    id: number
+    table_number?: string
+    capacity?: number
+    location_description?: string
+    is_active?: boolean
+    qr_code_url?: string // AHORA SE PUEDE ACTUALIZAR DESDE EL FRONTEND
+  }): Promise<ApiResponse<{ table: Table }>> {
+    const response = await fetch(getApiUrl("UPDATE_TABLE"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(tableData),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Eliminar mesa
+  static async deleteTable(tableId: number): Promise<ApiResponse> {
+    const response = await fetch(getApiUrl("DELETE_TABLE"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ id: tableId }),
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Obtener restaurante y menú por slug (PÚBLICO)
+  static async getRestaurantBySlug(slug: string): Promise<
+    ApiResponse<{
+      restaurant: Restaurant
+      categories: MenuCategory[]
+      menu_items: MenuItem[]
+    }>
+  > {
+    const response = await fetch(getApiUrl("GET_RESTAURANT_BY_SLUG") + `&slug=${slug}`, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+    })
+    return this.handleResponse(response)
+  }
+
+  // NUEVO MÉTODO: Realizar un pedido (PÚBLICO)
+  static async placeOrder(orderData: {
+    restaurant_id: number
+    table_id: number
+    items: OrderItemPayload[]
+    customer_notes?: string
+  }): Promise<ApiResponse<PlaceOrderResponse>> {
+    const response = await fetch(getApiUrl("PLACE_ORDER"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }, // No auth needed for public endpoint
+      mode: "cors",
+      body: JSON.stringify(orderData),
     })
     return this.handleResponse(response)
   }

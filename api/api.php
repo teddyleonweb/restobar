@@ -4,6 +4,10 @@
 * Funciones: Registro, Login, Restaurantes, Imágenes y Menús como archivos
 * Actualizada para trabajar con la base de datos existente
 * VERSIÓN COMPLETA CON TODOS LOS ENDPOINTS
+*
+* AÑADIDO: Gestión de Mesas y QR (generación en frontend, subida a backend)
+* AÑADIDO: Endpoint para obtener restaurante por slug y su menú
+* AÑADIDO: Endpoint para procesar pedidos de clientes
 */
 
 // Evitar errores que afecten los headers
@@ -42,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // Solo establecer Content-Type para respuestas JSON
-if (!isset($_GET['action']) || ($_GET['action'] !== 'upload-image' && $_GET['action'] !== 'upload-menu-file')) {
+if (!isset($_GET['action']) || ($_GET['action'] !== 'upload-image' && $_GET['action'] !== 'upload-menu-file' && $_GET['action'] !== 'upload-qr-image')) { // MODIFICADO: Añadir upload-qr-image
   header("Content-Type: application/json");
 }
 
@@ -138,12 +142,17 @@ function generate_unique_filename($restaurant_id, $category, $original_name) {
 }
 
 // Función para crear directorio de restaurante
-function create_restaurant_directory($restaurant_id) {
+function create_restaurant_directory($restaurant_id, $category = 'other') { // MODIFICADO: Añadir $category
   global $base_upload_dir;
   
   $restaurant_dir = $base_upload_dir . '/restaurant_' . $restaurant_id;
   $year_month = date('Y/m');
   $full_dir = $restaurant_dir . '/' . $year_month;
+
+  // MODIFICADO: Crear subdirectorio específico para QR si la categoría es 'qr'
+  if ($category === 'qr') {
+      $full_dir .= '/qr_codes';
+  }
   
   if (!file_exists($full_dir)) {
       wp_mkdir_p($full_dir);
@@ -231,7 +240,7 @@ function resize_image($source_path, $destination_path, $max_width, $max_height, 
   return $result ? ['width' => $new_width, 'height' => $new_height] : false;
 }
 
-// --- MODIFICACIÓN: Función upload_and_process_file para manejar imágenes y PDFs ---
+// Función upload_and_process_file para manejar imágenes y PDFs
 function upload_and_process_file($file, $restaurant_id, $category = 'other', $allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']) {
   global $wpdb;
   
@@ -264,8 +273,8 @@ function upload_and_process_file($file, $restaurant_id, $category = 'other', $al
       throw new Exception('El archivo es demasiado grande. Máximo: ' . round($max_file_size / 1024 / 1024, 2) . 'MB');
   }
   
-  // Crear directorio
-  $upload_dir = create_restaurant_directory($restaurant_id);
+  // Crear directorio (pasando la categoría para la lógica de subdirectorio QR)
+  $upload_dir = create_restaurant_directory($restaurant_id, $category); // MODIFICADO: Pasar $category
   
   // Verificar que el directorio existe y es escribible
   if (!file_exists($upload_dir)) {
@@ -295,8 +304,8 @@ function upload_and_process_file($file, $restaurant_id, $category = 'other', $al
       $width = $image_info ? $image_info[0] : null;
       $height = $image_info ? $image_info[1] : null;
       
-      // Generar thumbnails si está habilitado
-      if ($generate_thumbnails && $image_info) {
+      // Generar thumbnails si está habilitado y no es un QR (los QR no necesitan thumbnails)
+      if ($generate_thumbnails && $image_info && $category !== 'qr') { // MODIFICADO: No generar thumbnails para QR
           $thumbnail_pairs = explode(',', $thumbnail_sizes);
           
           foreach ($thumbnail_pairs as $pair) {
@@ -341,7 +350,6 @@ function upload_and_process_file($file, $restaurant_id, $category = 'other', $al
       'thumbnails' => $thumbnails
   ];
 }
-// --- FIN MODIFICACIÓN ---
 
 // Obtener token de autorización
 $headers = getallheaders();
@@ -433,8 +441,8 @@ switch ($action) {
               'slug' => $slug,
               'address' => $data['direccion'],
               'city' => $data['ciudad'],
-              'phone' => $data['telefono'],
-              'email' => $data['email'],
+              'phone' => isset($data['telefono']) ? $data['telefono'] : null,
+              'email' => isset($data['email']) ? $data['email'] : null,
               'status' => 'trial',
               'trial_start_date' => current_time('mysql'),
               'trial_end_date' => date('Y-m-d H:i:s', strtotime('+30 days'))
@@ -457,7 +465,7 @@ switch ($action) {
       ], 201);
       break;
   
-  // LOGIN DE USUARIO (actualizado para incluir imágenes y menús)
+  // LOGIN DE USUARIO (actualizado para incluir imágenes, menús y MESAS)
   case 'login':
       if ($method !== 'POST') {
           send_error('Método no permitido', 405);
@@ -501,7 +509,7 @@ switch ($action) {
       // Generar token
       $token = generate_token($user->id, $user->email, $user->first_name . ' ' . $user->last_name);
       
-      // Obtener restaurantes del usuario con imágenes y menús
+      // Obtener restaurantes del usuario con imágenes, menús y MESAS
       $restaurants = $wpdb->get_results($wpdb->prepare(
           "SELECT r.*, 
                   (SELECT COUNT(*) FROM kvq_tubarresto_restaurant_images ri WHERE ri.restaurant_id = r.id AND ri.is_active = 1) as total_images
@@ -511,7 +519,7 @@ switch ($action) {
           $user->id
       ));
       
-      // Para cada restaurante, obtener sus imágenes y menús
+      // Para cada restaurante, obtener sus imágenes, menús y MESAS
       foreach ($restaurants as &$restaurant) {
           // Obtener galería de imágenes
           $images = $wpdb->get_results($wpdb->prepare(
@@ -536,7 +544,7 @@ switch ($action) {
               ];
           }, $images);
 
-          // --- NUEVA FUNCIONALIDAD: Obtener menús del restaurante ---
+          // Obtener menús del restaurante
           $menus = $wpdb->get_results($wpdb->prepare(
               "SELECT * FROM kvq_tubarresto_restaurant_menus
                WHERE restaurant_id = %d AND is_active = 1
@@ -560,6 +568,27 @@ switch ($action) {
                   'createdAt' => $menu->created_at
               ];
           }, $menus);
+          
+          // --- NUEVA FUNCIONALIDAD: Obtener mesas del restaurante ---
+          $tables = $wpdb->get_results($wpdb->prepare(
+              "SELECT * FROM kvq_tubarresto_tables
+               WHERE restaurant_id = %d AND is_active = 1
+               ORDER BY table_number ASC",
+              $restaurant->id
+          ));
+
+          $restaurant->tables = array_map(function($table) {
+              return [
+                  'id' => (int) $table->id,
+                  'tableNumber' => $table->table_number,
+                  'capacity' => (int) $table->capacity,
+                  'locationDescription' => $table->location_description,
+                  'qrCodeData' => $table->qr_code_data,
+                  'qrCodeUrl' => $table->qr_code_url,
+                  'isActive' => (bool) $table->is_active,
+                  'createdAt' => $table->created_at
+              ];
+          }, $tables);
           // --- FIN NUEVA FUNCIONALIDAD ---
       }
       
@@ -594,7 +623,8 @@ switch ($action) {
                   'logo_url' => $r->logo_url,
                   'cover_image_url' => $r->cover_image_url,
                   'images' => $r->images,
-                  'menus' => $r->menus, // --- NUEVA FUNCIONALIDAD: Incluir menús ---
+                  'menus' => $r->menus,
+                  'tables' => $r->tables, // --- NUEVA FUNCIONALIDAD: Incluir mesas ---
                   'total_images' => (int) $r->total_images
               ];
           }, $restaurants),
@@ -684,7 +714,8 @@ switch ($action) {
               'logo_url' => $restaurant->logo_url,
               'cover_image_url' => $restaurant->cover_image_url,
               'images' => [],
-              'menus' => [], // --- NUEVA FUNCIONALIDAD: Incluir menús vacíos ---
+              'menus' => [],
+              'tables' => [], // --- NUEVA FUNCIONALIDAD: Incluir mesas vacías ---
               'total_images' => 0
           ]
       ], 201);
@@ -782,7 +813,7 @@ switch ($action) {
           send_error('Error al actualizar restaurante', 500);
       }
       
-      // Obtener el restaurante actualizado con imágenes y menús
+      // Obtener el restaurante actualizado con imágenes, menús y MESAS
       $updated_restaurant = $wpdb->get_row($wpdb->prepare(
           "SELECT r.*, 
                   (SELECT COUNT(*) FROM kvq_tubarresto_restaurant_images ri WHERE ri.restaurant_id = r.id AND ri.is_active = 1) as total_images
@@ -814,7 +845,7 @@ switch ($action) {
           ];
       }, $images);
 
-      // --- NUEVA FUNCIONALIDAD: Obtener menús del restaurante ---
+      // Obtener menús del restaurante
       $menus = $wpdb->get_results($wpdb->prepare(
           "SELECT * FROM kvq_tubarresto_restaurant_menus
            WHERE restaurant_id = %d AND is_active = 1
@@ -838,6 +869,27 @@ switch ($action) {
               'createdAt' => $menu->created_at
           ];
       }, $menus);
+      
+      // --- NUEVA FUNCIONALIDAD: Obtener mesas del restaurante ---
+      $tables = $wpdb->get_results($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_tables
+           WHERE restaurant_id = %d AND is_active = 1
+           ORDER BY table_number ASC",
+          $restaurant_id
+      ));
+
+      $restaurant_tables = array_map(function($table) {
+          return [
+              'id' => (int) $table->id,
+              'tableNumber' => $table->table_number,
+              'capacity' => (int) $table->capacity,
+              'locationDescription' => $table->location_description,
+              'qrCodeData' => $table->qr_code_data,
+              'qrCodeUrl' => $table->qr_code_url,
+              'isActive' => (bool) $table->is_active,
+              'createdAt' => $table->created_at
+          ];
+      }, $tables);
       // --- FIN NUEVA FUNCIONALIDAD ---
       
       send_success([
@@ -858,7 +910,8 @@ switch ($action) {
               'logo_url' => $updated_restaurant->logo_url,
               'cover_image_url' => $updated_restaurant->cover_image_url,
               'images' => $restaurant_images,
-              'menus' => $restaurant_menus, // --- NUEVA FUNCIONALIDAD: Incluir menús ---
+              'menus' => $restaurant_menus,
+              'tables' => $restaurant_tables, // --- NUEVA FUNCIONALIDAD: Incluir mesas ---
               'total_images' => (int) $updated_restaurant->total_images
           ]
       ]);
@@ -958,8 +1011,8 @@ switch ($action) {
               'file_name' => $upload_result['file_name'],
               'file_size' => $upload_result['file_size'],
               'mime_type' => $upload_result['mime_type'],
-              'width' => $upload_result['width'],
-              'height' => $upload_result['height'],
+              'width' => (int)$upload_result['width'],
+              'height' => (int)$upload_result['height'],
               'sort_order' => $sort_order,
               'is_active' => 1
           ],
@@ -1094,8 +1147,8 @@ switch ($action) {
                   'file_name' => $upload_result['file_name'],
                   'file_size' => $upload_result['file_size'],
                   'mime_type' => $upload_result['mime_type'],
-                  'width' => $upload_result['width'],
-                  'height' => $upload_result['height'],
+                  'width' => (int)$upload_result['width'],
+                  'height' => (int)$upload_result['height'],
                   'sort_order' => $sort_order,
                   'is_active' => 1
               ],
@@ -1147,6 +1200,80 @@ switch ($action) {
       }
       break;
   // --- FIN NUEVA FUNCIONALIDAD: SUBIR ARCHIVO DE MENÚ ---
+
+  // --- NUEVO ENDPOINT: SUBIR IMAGEN DE QR ---
+  case 'upload-qr-image':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+
+      ini_set('display_errors', 1);
+      error_reporting(E_ALL);
+
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+
+      // Verificar que se subió un archivo
+      if (!isset($_FILES['qr_image'])) {
+          send_error('No se envió ningún archivo de imagen QR');
+      }
+
+      if ($_FILES['qr_image']['error'] !== UPLOAD_ERR_OK) {
+          $upload_errors = [
+              UPLOAD_ERR_INI_SIZE => 'El archivo excede el tamaño máximo permitido por PHP',
+              UPLOAD_ERR_FORM_SIZE => 'El archivo excede el tamaño máximo permitido por el formulario',
+              UPLOAD_ERR_PARTIAL => 'El archivo se subió parcialmente',
+              UPLOAD_ERR_NO_FILE => 'No se subió ningún archivo',
+              UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal',
+              UPLOAD_ERR_CANT_WRITE => 'Error al escribir el archivo en el disco',
+              UPLOAD_ERR_EXTENSION => 'Una extensión de PHP detuvo la subida'
+          ];
+          $error_message = isset($upload_errors[$_FILES['qr_image']['error']]) 
+              ? $upload_errors[$_FILES['qr_image']['error']] 
+              : 'Error desconocido al subir el archivo QR';
+          send_error($error_message);
+      }
+
+      $file = $_FILES['qr_image'];
+      $restaurant_id = isset($_POST['restaurant_id']) ? (int)$_POST['restaurant_id'] : 0;
+      
+      // Validar restaurant_id
+      if (!$restaurant_id || $restaurant_id <= 0) {
+          send_error('ID de restaurante inválido: ' . $restaurant_id);
+      }
+
+      // Verificar que el restaurante pertenece al usuario
+      global $wpdb;
+      $restaurant = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_restaurants WHERE id = %d AND user_id = %d",
+          $restaurant_id,
+          $user_data['id']
+      ));
+
+      if (!$restaurant) {
+          send_error('Restaurante no encontrado o no autorizado', 404);
+      }
+
+      try {
+          // Usar la función de subida general con categoría 'qr'
+          $upload_result = upload_and_process_file($file, $restaurant_id, 'qr', ['image/png', 'image/jpeg', 'image/webp']);
+          
+          send_success([
+              'message' => 'Imagen QR subida exitosamente',
+              'qr_image_url' => $upload_result['file_url'],
+              'file_name' => $upload_result['file_name'],
+              'file_path' => $upload_result['file_path'] // Para uso interno en el backend si se necesita eliminar
+          ], 201);
+          
+      } catch (Exception $e) {
+          error_log('Error en upload-qr-image: ' . $e->getMessage());
+          send_error('Error al subir imagen QR: ' . $e->getMessage(), 500);
+      }
+      break;
+  // --- FIN NUEVO ENDPOINT: SUBIR IMAGEN DE QR ---
 
   // AGREGAR IMAGEN A GALERÍA (sin cambios, usa la función upload_and_process_file)
   case 'add-restaurant-image':
@@ -1240,7 +1367,7 @@ switch ($action) {
           ]
       ], 201);
       break;
-  
+
   // ACTUALIZAR LOGO O IMAGEN DE PORTADA
   case 'update-restaurant-main-image':
       if ($method !== 'POST') {
@@ -1455,9 +1582,10 @@ switch ($action) {
       }
       
       // Eliminar archivo físico
-      if (file_exists($menu->file_path)) { // Asumiendo que file_path está disponible o se puede reconstruir
-          unlink($menu->file_path);
-          // Para PDFs o imágenes grandes, no hay thumbnails por defecto, pero si se generaran, se eliminarían aquí.
+      // Reconstruir la ruta física del archivo
+      $file_path_to_delete = str_replace(get_file_url(''), $base_upload_dir . '/', $menu->url);
+      if (file_exists($file_path_to_delete)) {
+          unlink($file_path_to_delete);
       }
       
       // Eliminar registro de la base de datos
@@ -1478,7 +1606,338 @@ switch ($action) {
       break;
   // --- FIN NUEVA FUNCIONALIDAD: ELIMINAR MENÚ DE RESTAURANTE ---
 
-  // ELIMINAR RESTAURANTE
+  // --- NUEVA FUNCIONALIDAD: AGREGAR MESA ---
+  case 'add-table':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+      
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+      
+      // Validar campos requeridos
+      if (empty($data['restaurant_id']) || empty($data['table_number']) || !isset($data['capacity'])) {
+          send_error('restaurant_id, table_number y capacity son requeridos');
+      }
+      
+      $restaurant_id = (int)$data['restaurant_id'];
+      $table_number = sanitize_text_field($data['table_number']);
+      $capacity = (int)$data['capacity'];
+      $location_description = isset($data['location_description']) ? sanitize_text_field($data['location_description']) : null;
+      $qr_code_url = isset($data['qr_code_url']) ? esc_url_raw($data['qr_code_url']) : null; // ACEPTAR URL DE IMAGEN QR DESDE EL FRONTEND
+      
+      // Verificar que el restaurante pertenece al usuario
+      global $wpdb;
+      $restaurant = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_restaurants WHERE id = %d AND user_id = %d",
+          $restaurant_id,
+          $user_data['id']
+      ));
+      
+      if (!$restaurant) {
+          send_error('Restaurante no encontrado o no autorizado', 404);
+      }
+
+      // Verificar si el número de mesa ya existe para este restaurante
+      $existing_table = $wpdb->get_row($wpdb->prepare(
+          "SELECT id FROM kvq_tubarresto_tables WHERE restaurant_id = %d AND table_number = %s",
+          $restaurant_id,
+          $table_number
+      ));
+
+      if ($existing_table) {
+          send_error('Ya existe una mesa con este número para este restaurante.', 409);
+      }
+      
+      // Generar qr_code_data (URL para el cliente)
+      // En un entorno real, 'tubarresto.com' sería tu dominio de frontend
+      // y el slug del restaurante se obtendría de la BD.
+      $restaurant_slug = $restaurant->slug; // Asumiendo que el objeto $restaurant tiene el slug
+      $qr_code_data_base = "https://tubarresto.com/order/{$restaurant_slug}/"; // Se completará con el ID de la mesa
+      
+      // Insertar mesa en la base de datos
+      $result = $wpdb->insert(
+          'kvq_tubarresto_tables',
+          [
+              'restaurant_id' => $restaurant_id,
+              'table_number' => $table_number,
+              'capacity' => $capacity,
+              'location_description' => $location_description,
+              'is_active' => 1, // Por defecto activa
+              'qr_code_url' => $qr_code_url // GUARDAR LA URL DE LA IMAGEN QR SUBIDA
+          ],
+          ['%d', '%s', '%d', '%s', '%d', '%s']
+      );
+      
+      if (!$result) {
+          send_error('Error al agregar mesa', 500);
+      }
+      
+      $table_id = $wpdb->insert_id;
+
+      // Actualizar qr_code_data con el ID de la mesa recién creada
+      $final_qr_code_data = $qr_code_data_base . $table_id;
+
+      $wpdb->update(
+          'kvq_tubarresto_tables',
+          [
+              'qr_code_data' => $final_qr_code_data
+          ],
+          ['id' => $table_id],
+          ['%s'],
+          ['%d']
+      );
+
+      // Obtener la mesa creada (con las URLs de QR actualizadas)
+      $table = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_tables WHERE id = %d",
+          $table_id
+      ));
+      
+      send_success([
+          'message' => 'Mesa agregada exitosamente',
+          'table' => [
+              'id' => (int) $table->id,
+              'restaurantId' => (int) $table->restaurant_id,
+              'tableNumber' => $table->table_number,
+              'capacity' => (int) $table->capacity,
+              'locationDescription' => $table->location_description,
+              'qrCodeData' => $table->qr_code_data,
+              'qrCodeUrl' => $table->qr_code_url,
+              'isActive' => (bool) $table->is_active,
+              'createdAt' => $table->created_at
+          ]
+      ], 201);
+      break;
+  // --- FIN NUEVA FUNCIONALIDAD: AGREGAR MESA ---
+
+  // --- NUEVA FUNCIONALIDAD: OBTENER MESAS ---
+  case 'get-tables':
+      if ($method !== 'GET') {
+          send_error('Método no permitido', 405);
+      }
+      
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+      
+      $restaurant_id = isset($_GET['restaurant_id']) ? (int)$_GET['restaurant_id'] : 0;
+      
+      // Verificar que el restaurante pertenece al usuario
+      global $wpdb;
+      $restaurant = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_restaurants WHERE id = %d AND user_id = %d",
+          $restaurant_id,
+          $user_data['id']
+      ));
+      
+      if (!$restaurant) {
+          send_error('Restaurante no encontrado o no autorizado', 404);
+      }
+      
+      // Obtener mesas del restaurante
+      $tables = $wpdb->get_results($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_tables
+           WHERE restaurant_id = %d AND is_active = 1
+           ORDER BY table_number ASC",
+          $restaurant_id
+      ));
+      
+      header("Cache-Control: no-cache, no-store, must-revalidate");
+      header("Pragma: no-cache");
+      header("Expires: 0");
+      send_success([
+          'tables' => array_map(function($table) {
+              return [
+                  'id' => (int) $table->id,
+                  'restaurantId' => (int) $table->restaurant_id,
+                  'tableNumber' => $table->table_number,
+                  'capacity' => (int) $table->capacity,
+                  'locationDescription' => $table->location_description,
+                  'qrCodeData' => $table->qr_code_data,
+                  'qrCodeUrl' => $table->qr_code_url,
+                  'isActive' => (bool) $table->is_active,
+                  'createdAt' => $table->created_at
+              ];
+          }, $tables),
+          'total_tables' => count($tables)
+      ]);
+      break;
+  // --- FIN NUEVA FUNCIONALIDAD: OBTENER MESAS ---
+
+  // --- NUEVA FUNCIONALIDAD: ACTUALIZAR MESA ---
+  case 'update-table':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+      
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+      
+      // Validar campos requeridos
+      if (empty($data['id']) || !is_numeric($data['id']) || (int)$data['id'] <= 0) {
+          send_error('ID de la mesa inválido o faltante.');
+      }
+      
+      $table_id = (int) $data['id'];
+      
+      // Verificar que la mesa pertenece a un restaurante del usuario
+      global $wpdb;
+      $table = $wpdb->get_row($wpdb->prepare(
+          "SELECT t.*, r.user_id, r.slug 
+           FROM kvq_tubarresto_tables t
+           JOIN kvq_tubarresto_restaurants r ON t.restaurant_id = r.id
+           WHERE t.id = %d AND r.user_id = %d",
+          $table_id,
+          $user_data['id']
+      ));
+      
+      if (!$table) {
+          send_error('Mesa no encontrada o no autorizada', 404);
+      }
+      
+      // Preparar datos para actualizar
+      $update_data = [];
+      $update_format = [];
+      
+      $fields = [
+          'table_number' => '%s',
+          'capacity' => '%d',
+          'location_description' => '%s',
+          'is_active' => '%d',
+          'qr_code_url' => '%s' // ACEPTAR ACTUALIZACIÓN DE URL DE IMAGEN QR
+      ];
+      
+      foreach ($fields as $field => $format) {
+          if (isset($data[$field])) {
+              $update_data[$field] = $data[$field];
+              $update_format[] = $format;
+          }
+      }
+      
+      if (empty($update_data)) {
+          send_error('No hay datos para actualizar');
+      }
+
+      // Si se actualiza el número de mesa, regenerar QR data
+      if (isset($update_data['table_number']) && $update_data['table_number'] !== $table->table_number) {
+          $restaurant_slug = $table->slug; // Usar el slug del restaurante de la consulta inicial
+          $new_qr_code_data = "https://tubarresto.com/order/{$restaurant_slug}/{$table_id}";
+          
+          $update_data['qr_code_data'] = $new_qr_code_data;
+          $update_format[] = '%s';
+      }
+      
+      // Agregar timestamp de actualización
+      $update_data['updated_at'] = current_time('mysql');
+      $update_format[] = '%s';
+      
+      // Actualizar mesa
+      $result = $wpdb->update(
+          'kvq_tubarresto_tables',
+          $update_data,
+          ['id' => $table_id],
+          $update_format,
+          ['%d']
+      );
+      
+      if ($result === false) {
+          send_error('Error al actualizar mesa: ' . $wpdb->last_error, 500);
+      }
+      
+      // Obtener la mesa actualizada
+      $updated_table = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_tables WHERE id = %d",
+          $table_id
+      ));
+      
+      send_success([
+          'message' => 'Mesa actualizada exitosamente',
+          'table' => [
+              'id' => (int) $updated_table->id,
+              'restaurantId' => (int) $updated_table->restaurant_id,
+              'tableNumber' => $updated_table->table_number,
+              'capacity' => (int) $updated_table->capacity,
+              'locationDescription' => $updated_table->location_description,
+              'qrCodeData' => $updated_table->qr_code_data,
+              'qrCodeUrl' => $updated_table->qr_code_url,
+              'isActive' => (bool) $updated_table->is_active,
+              'createdAt' => $updated_table->created_at,
+              'updatedAt' => $updated_table->updated_at
+          ]
+      ]);
+      break;
+  // --- FIN NUEVA FUNCIONALIDAD: ACTUALIZAR MESA ---
+
+  // --- NUEVA FUNCIONALIDAD: ELIMINAR MESA ---
+  case 'delete-table':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+      
+      // Verificar autenticación
+      $user_data = verify_token($token);
+      if (!$user_data) {
+          send_error('No autorizado', 401);
+      }
+      
+      // Validar campos requeridos
+      if (empty($data['id']) || !is_numeric($data['id']) || (int)$data['id'] <= 0) {
+          send_error('ID de la mesa inválido o faltante.');
+      }
+      
+      $table_id = (int) $data['id'];
+      
+      // Verificar que la mesa pertenece a un restaurante del usuario
+      global $wpdb;
+      $table = $wpdb->get_row($wpdb->prepare(
+          "SELECT t.*, r.user_id 
+          FROM kvq_tubarresto_tables t
+          JOIN kvq_tubarresto_restaurants r ON t.restaurant_id = r.id
+          WHERE t.id = %d AND r.user_id = %d",
+          $table_id,
+          $user_data['id']
+      ));
+      
+      if (!$table) {
+          send_error('Mesa no encontrada o no autorizada', 404);
+      }
+      
+      // Eliminar archivo físico del QR si existe
+      if (!empty($table->qr_code_url)) {
+          $qr_file_path = str_replace(get_file_url(''), $base_upload_dir . '/', $table->qr_code_url);
+          if (file_exists($qr_file_path)) {
+              unlink($qr_file_path);
+          }
+      }
+      
+      // Eliminar registro de la base de datos
+      $result = $wpdb->delete(
+          'kvq_tubarresto_tables',
+          ['id' => $table_id],
+          ['%d']
+      );
+      
+      if (!$result) {
+          send_error('Error al eliminar mesa', 500);
+      }
+      
+      send_success([
+          'message' => 'Mesa eliminada exitosamente',
+          'table_id' => (int) $table_id
+      ]);
+      break;
+  // --- FIN NUEVA FUNCIONALIDAD: ELIMINAR MESA ---
+
+  // ELIMINAR RESTAURANTE (actualizado para eliminar también las mesas)
   case 'delete-restaurant':
       if ($method !== 'POST') {
           send_error('Método no permitido', 405);
@@ -1539,16 +1998,13 @@ switch ($action) {
           ['%d']
       );
 
-      // --- NUEVA FUNCIONALIDAD: Eliminar menús asociados ---
+      // Eliminar menús asociados
       $menus_to_delete = $wpdb->get_results($wpdb->prepare(
           "SELECT * FROM kvq_tubarresto_restaurant_menus WHERE restaurant_id = %d",
           $restaurant_id
       ));
 
       foreach ($menus_to_delete as $menu_file) {
-          // Asumiendo que file_path está disponible o se puede reconstruir
-          // Para simplificar, si el URL es un path local, lo eliminamos.
-          // En un entorno real, necesitarías la ruta física completa.
           $local_path = str_replace($base_upload_url, $base_upload_dir, $menu_file->url);
           if (file_exists($local_path)) {
               unlink($local_path);
@@ -1560,8 +2016,29 @@ switch ($action) {
           ['restaurant_id' => $restaurant_id],
           ['%d']
       );
-      // --- FIN NUEVA FUNCIONALIDAD ---
       
+      // --- NUEVA FUNCIONALIDAD: Eliminar mesas asociadas y sus QR físicos ---
+      $tables_to_delete = $wpdb->get_results($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_tables WHERE restaurant_id = %d",
+          $restaurant_id
+      ));
+
+      foreach ($tables_to_delete as $table_item) {
+          if (!empty($table_item->qr_code_url)) {
+              $qr_file_path = str_replace(get_file_url(''), $base_upload_dir . '/', $table_item->qr_code_url);
+              if (file_exists($qr_file_path)) {
+                  unlink($qr_file_path);
+              }
+          }
+      }
+
+      $wpdb->delete(
+          'kvq_tubarresto_tables',
+          ['restaurant_id' => $restaurant_id],
+          ['%d']
+      );
+      // --- FIN NUEVA FUNCIONALIDAD ---
+
       // Eliminar configuración de upload si existe
       $wpdb->delete(
           'kvq_tubarresto_upload_settings',
@@ -1584,7 +2061,8 @@ switch ($action) {
           'message' => 'Restaurante eliminado exitosamente',
           'restaurant_id' => (int) $restaurant_id,
           'deleted_images' => count($images),
-          'deleted_menus' => count($menus_to_delete) // --- NUEVA FUNCIONALIDAD: Conteo de menús eliminados ---
+          'deleted_menus' => count($menus_to_delete),
+          'deleted_tables' => count($tables_to_delete) // --- NUEVA FUNCIONALIDAD: Conteo de mesas eliminadas ---
       ]);
       break;
   
@@ -1649,8 +2127,8 @@ switch ($action) {
           'deleted_file' => $delete_file
       ]);
       break;
-  
-  // ESTADO DE LA API (actualizado)
+
+  // ESTADO DE LA API (actualizado para incluir mesas y pedidos)
   case 'status':
       if ($method !== 'GET') {
           send_error('Método no permitido', 405);
@@ -1667,7 +2145,12 @@ switch ($action) {
       // Nuevas tablas de menú
       $menu_categories_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_menu_categories'") === 'kvq_tubarresto_menu_categories';
       $menu_items_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_menu_items'") === 'kvq_tubarresto_menu_items';
-      $restaurant_menus_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_restaurant_menus'") === 'kvq_tubarresto_restaurant_menus'; // --- NUEVA FUNCIONALIDAD: Tabla de menús ---
+      $restaurant_menus_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_restaurant_menus'") === 'kvq_tubarresto_restaurant_menus';
+      
+      // --- NUEVA FUNCIONALIDAD: Tabla de mesas y pedidos ---
+      $tables_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_tables'") === 'kvq_tubarresto_tables';
+      $orders_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_orders'") === 'kvq_tubarresto_orders';
+      $order_items_table_exists = $wpdb->get_var("SHOW TABLES LIKE 'kvq_tubarresto_order_items'") === 'kvq_tubarresto_order_items';
 
       $users_count = $users_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_users") : 0;
       $restaurants_count = $restaurants_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_restaurants") : 0;
@@ -1676,7 +2159,12 @@ switch ($action) {
       // Conteo de elementos de menú
       $menu_categories_count = $menu_categories_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_menu_categories WHERE is_active = 1") : 0;
       $menu_items_count = $menu_items_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_menu_items") : 0;
-      $restaurant_menus_count = $restaurant_menus_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_restaurant_menus WHERE is_active = 1") : 0; // --- NUEVA FUNCIONALIDAD: Conteo de menús ---
+      $restaurant_menus_count = $restaurant_menus_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_restaurant_menus WHERE is_active = 1") : 0;
+      
+      // --- NUEVA FUNCIONALIDAD: Conteo de mesas y pedidos ---
+      $tables_count = $tables_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_tables WHERE is_active = 1") : 0;
+      $orders_count = $orders_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_orders") : 0;
+      $order_items_count = $order_items_table_exists ? $wpdb->get_var("SELECT COUNT(*) FROM kvq_tubarresto_order_items") : 0;
 
       // Verificar directorios de upload
       $upload_dir_exists = file_exists($base_upload_dir);
@@ -1695,7 +2183,7 @@ switch ($action) {
       
       send_success([
           'status' => 'ok',
-          'message' => 'Tu Bar Resto API con almacenamiento de archivos y gestión de menú funcionando correctamente',
+          'message' => 'Tu Bar Resto API con almacenamiento de archivos, gestión de menú y mesas funcionando correctamente',
           'endpoints' => [
               'register' => 'POST - Registro de usuarios',
               'login' => 'POST - Autenticación de usuarios',
@@ -1703,20 +2191,27 @@ switch ($action) {
               'update-restaurant' => 'POST - Actualizar restaurante',
               'delete-restaurant' => 'POST - Eliminar restaurante',
               'upload-image' => 'POST - Subir imagen de galería',
-              'upload-menu-file' => 'POST - Subir archivo de menú (imagen/PDF)', // --- NUEVA FUNCIONALIDAD: Endpoint de subida de menú ---
+              'upload-menu-file' => 'POST - Subir archivo de menú (imagen/PDF)',
+              'upload-qr-image' => 'POST - Subir imagen de QR',
               'add-restaurant-image' => 'POST - Agregar imagen a galería',
               'update-restaurant-main-image' => 'POST - Actualizar logo/portada',
               'get-restaurant-images' => 'GET - Obtener imágenes de galería',
-              'get-restaurant-menus' => 'GET - Obtener menús de restaurante', // --- NUEVA FUNCIONALIDAD: Endpoint de obtención de menú ---
+              'get-restaurant-menus' => 'GET - Obtener menús de restaurante',
               'delete-restaurant-image' => 'DELETE - Eliminar imagen de galería',
-              'delete-restaurant-menu' => 'POST - Eliminar menú de restaurante', // --- NUEVA FUNCIONALIDAD: Endpoint de eliminación de menú ---
+              'delete-restaurant-menu' => 'POST - Eliminar menú de restaurante',
               'get-menu-items' => 'GET - Obtener platos y bebidas',
               'add-menu-item' => 'POST - Agregar plato/bebida',
               'update-menu-item' => 'POST - Actualizar plato/bebida',
               'delete-menu-item' => 'POST - Eliminar plato/bebida',
               'get-menu-categories' => 'GET - Obtener categorías de menú',
               'add-menu-category' => 'POST - Agregar categoría de menú',
-              'update-menu-category' => 'POST - Actualizar categoría de menú', // Agregado este endpoint
+              'update-menu-category' => 'POST - Actualizar categoría de menú',
+              'add-table' => 'POST - Agregar mesa y generar QR',
+              'get-tables' => 'GET - Obtener mesas de restaurante',
+              'update-table' => 'POST - Actualizar mesa',
+              'delete-table' => 'POST - Eliminar mesa',
+              'get-restaurant-by-slug' => 'GET - Obtener restaurante y menú por slug (Público)', // NUEVO
+              'place-order' => 'POST - Realizar un pedido (Público)', // NUEVO
               'status' => 'GET - Estado de la API'
           ],
           'database' => [
@@ -1726,13 +2221,19 @@ switch ($action) {
               'upload_settings_table_exists' => $upload_settings_table_exists,
               'menu_categories_table_exists' => $menu_categories_table_exists,
               'menu_items_table_exists' => $menu_items_table_exists,
-              'restaurant_menus_table_exists' => $restaurant_menus_table_exists, // --- NUEVA FUNCIONALIDAD: Estado de tabla de menús ---
+              'restaurant_menus_table_exists' => $restaurant_menus_table_exists,
+              'tables_table_exists' => $tables_table_exists,
+              'orders_table_exists' => $orders_table_exists, // NUEVO
+              'order_items_table_exists' => $order_items_table_exists, // NUEVO
               'users_count' => (int) $users_count,
               'restaurants_count' => (int) $restaurants_count,
               'images_count' => (int) $images_count,
               'menu_categories_count' => (int) $menu_categories_count,
               'menu_items_count' => (int) $menu_items_count,
-              'restaurant_menus_count' => (int) $restaurant_menus_count // --- NUEVA FUNCIONALIDAD: Conteo de menús ---
+              'restaurant_menus_count' => (int) $restaurant_menus_count,
+              'tables_count' => (int) $tables_count,
+              'orders_count' => (int) $orders_count, // NUEVO
+              'order_items_count' => (int) $order_items_count // NUEVO
           ],
           'file_storage' => [
               'upload_dir_exists' => $upload_dir_exists,
@@ -2066,7 +2567,7 @@ switch ($action) {
       $update_format[] = '%s';
       
       // En el caso 'update-menu-item', justo antes de la actualización:
-      // Busca la línea: `$result = $wpdb->update(`
+      // Busca la línea: `$result = $wpdb->update()`
       // Y añade justo antes:
       // `error_log("DEBUG: update-menu-item - Data received for type: " . (isset($data['type']) ? $data['type'] : 'N/A'));`
       // `error_log("DEBUG: update-menu-item - Update data array: " . print_r($update_data, true));`
@@ -2435,6 +2936,237 @@ switch ($action) {
               'updated_at' => $updated_category->updated_at
           ]
       ]);
+      break;
+  
+  // --- NUEVO ENDPOINT: OBTENER RESTAURANTE Y MENÚ POR SLUG (PÚBLICO) ---
+  case 'get-restaurant-by-slug':
+      if ($method !== 'GET') {
+          send_error('Método no permitido', 405);
+      }
+
+      $slug = isset($_GET['slug']) ? sanitize_text_field($_GET['slug']) : '';
+      if (empty($slug)) {
+          send_error('Slug del restaurante es requerido');
+      }
+
+      global $wpdb;
+
+      // Obtener restaurante por slug
+      $restaurant = $wpdb->get_row($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_restaurants WHERE slug = %s AND status = 'active'", // Solo activos
+          $slug
+      ));
+
+      if (!$restaurant) {
+          send_error('Restaurante no encontrado o inactivo', 404);
+      }
+
+      $restaurant_id = (int) $restaurant->id;
+
+      // Obtener categorías de menú del restaurante
+      $categories = $wpdb->get_results($wpdb->prepare(
+          "SELECT * FROM kvq_tubarresto_menu_categories 
+           WHERE restaurant_id = %d AND is_active = 1 
+           ORDER BY sort_order, name",
+          $restaurant_id
+      ));
+
+      // Obtener ítems de menú del restaurante
+      $menu_items = $wpdb->get_results($wpdb->prepare(
+          "SELECT mi.*, mc.name as category_name 
+           FROM kvq_tubarresto_menu_items mi
+           LEFT JOIN kvq_tubarresto_menu_categories mc ON mi.category_id = mc.id
+           WHERE mi.restaurant_id = %d AND mi.is_available = 1
+           ORDER BY mi.type, mc.sort_order, mi.sort_order, mi.name",
+          $restaurant_id
+      ));
+
+      header("Cache-Control: no-cache, no-store, must-revalidate");
+      header("Pragma: no-cache");
+      header("Expires: 0");
+      send_success([
+          'restaurant' => [
+              'id' => $restaurant_id,
+              'name' => $restaurant->name,
+              'slug' => $restaurant->slug,
+              'description' => $restaurant->description,
+              'address' => $restaurant->address,
+              'city' => $restaurant->city,
+              'phone' => $restaurant->phone,
+              'email' => $restaurant->email,
+              'logo_url' => $restaurant->logo_url,
+              'cover_image_url' => $restaurant->cover_image_url,
+          ],
+          'categories' => array_map(function($cat) {
+              return [
+                  'id' => (int) $cat->id,
+                  'name' => $cat->name,
+                  'description' => $cat->description,
+                  'type' => $cat->type,
+                  'sort_order' => (int) $cat->sort_order,
+                  'is_active' => (bool) $cat->is_active,
+              ];
+          }, $categories),
+          'menu_items' => array_map(function($item) {
+              return [
+                  'id' => (int) $item->id,
+                  'name' => $item->name,
+                  'description' => $item->description,
+                  'price' => (float) $item->price,
+                  'image_url' => $item->image_url,
+                  'type' => $item->type,
+                  'category_id' => $item->category_id ? (int) $item->category_id : null,
+                  'category_name' => $item->category_name,
+                  'is_available' => (bool) $item->is_available,
+                  'is_featured' => (bool) $item->is_featured,
+                  'dietary' => [
+                      'is_vegetarian' => (bool) $item->is_vegetarian,
+                      'is_vegan' => (bool) $item->is_vegan,
+                      'is_gluten_free' => (bool) $item->is_gluten_free,
+                      'is_lactose_free' => (bool) $item->is_lactose_free,
+                      'is_spicy' => (bool) $item->is_spicy
+                  ],
+                  'calories' => $item->calories ? (int) $item->calories : null,
+                  'preparation_time' => $item->preparation_time ? (int) $item->preparation_time : null,
+                  'ingredients' => $item->ingredients,
+                  'allergens' => $item->allergens,
+                  'sort_order' => (int) $item->sort_order,
+                  'discount_percentage' => $item->discount_percentage ? (float) $item->discount_percentage : null,
+                  'discount_start_date' => $item->discount_start_date,
+                  'discount_end_date' => $item->discount_end_date
+              ];
+          }, $menu_items),
+      ]);
+      break;
+
+  // --- NUEVO ENDPOINT: REALIZAR UN PEDIDO (PÚBLICO) ---
+  case 'place-order':
+      if ($method !== 'POST') {
+          send_error('Método no permitido', 405);
+      }
+
+      // Validar campos requeridos
+      if (empty($data['restaurant_id']) || empty($data['table_id']) || !isset($data['items']) || !is_array($data['items']) || empty($data['items'])) {
+          send_error('restaurant_id, table_id y items (array no vacío) son requeridos');
+      }
+
+      $restaurant_id = (int) $data['restaurant_id'];
+      $table_id = (int) $data['table_id'];
+      $customer_notes = isset($data['customer_notes']) ? sanitize_textarea_field($data['customer_notes']) : null;
+      $items = $data['items'];
+
+      global $wpdb;
+
+      // Verificar que el restaurante existe y está activo
+      $restaurant = $wpdb->get_row($wpdb->prepare(
+          "SELECT id FROM kvq_tubarresto_restaurants WHERE id = %d AND status = 'active'",
+          $restaurant_id
+      ));
+      if (!$restaurant) {
+          send_error('Restaurante no encontrado o inactivo', 404);
+      }
+
+      // Verificar que la mesa existe y está activa para este restaurante
+      $table = $wpdb->get_row($wpdb->prepare(
+          "SELECT id FROM kvq_tubarresto_tables WHERE id = %d AND restaurant_id = %d AND is_active = 1",
+          $table_id,
+          $restaurant_id
+      ));
+      if (!$table) {
+          send_error('Mesa no encontrada o inactiva para este restaurante', 404);
+      }
+
+      $total_amount = 0;
+      $order_items_data = [];
+
+      // Validar cada ítem del pedido y calcular el total
+      foreach ($items as $item) {
+          if (empty($item['menu_item_id']) || empty($item['quantity']) || !is_numeric($item['quantity']) || (int)$item['quantity'] <= 0) {
+              send_error('Cada ítem del pedido debe tener un menu_item_id y una quantity válida');
+          }
+
+          $menu_item_id = (int) $item['menu_item_id'];
+          $quantity = (int) $item['quantity'];
+          $item_notes = isset($item['item_notes']) ? sanitize_textarea_field($item['item_notes']) : null;
+
+          // Obtener el precio actual del ítem desde la base de datos para evitar manipulaciones del cliente
+          $db_item = $wpdb->get_row($wpdb->prepare(
+              "SELECT price, discount_percentage, discount_start_date, discount_end_date FROM kvq_tubarresto_menu_items WHERE id = %d AND restaurant_id = %d AND is_available = 1",
+              $menu_item_id,
+              $restaurant_id
+          ));
+
+          if (!$db_item) {
+              send_error("Ítem de menú con ID {$menu_item_id} no encontrado o no disponible", 404);
+          }
+
+          $price_at_order = (float) $db_item->price;
+
+          // Aplicar descuento si es válido y está activo
+          if ($db_item->discount_percentage && $db_item->discount_start_date && $db_item->discount_end_date) {
+              $current_date = date('Y-m-d');
+              if ($current_date >= $db_item->discount_start_date && $current_date <= $db_item->discount_end_date) {
+                  $price_at_order = $price_at_order * (1 - ((float)$db_item->discount_percentage / 100));
+              }
+          }
+          
+          $subtotal_item = $price_at_order * $quantity;
+          $total_amount += $subtotal_item;
+
+          $order_items_data[] = [
+              'menu_item_id' => $menu_item_id,
+              'quantity' => $quantity,
+              'price_at_order' => $price_at_order,
+              'item_notes' => $item_notes
+          ];
+      }
+
+      // Insertar el pedido principal
+      $result_order = $wpdb->insert(
+          'kvq_tubarresto_orders',
+          [
+              'restaurant_id' => $restaurant_id,
+              'table_id' => $table_id,
+              'total_amount' => $total_amount,
+              'customer_notes' => $customer_notes,
+              'status' => 'pending' // Estado inicial del pedido
+          ],
+          ['%d', '%d', '%f', '%s', '%s']
+      );
+
+      if (!$result_order) {
+          send_error('Error al crear el pedido principal: ' . $wpdb->last_error, 500);
+      }
+
+      $order_id = $wpdb->insert_id;
+
+      // Insertar los ítems del pedido
+      foreach ($order_items_data as $item_data) {
+          $result_item = $wpdb->insert(
+              'kvq_tubarresto_order_items',
+              [
+                  'order_id' => $order_id,
+                  'menu_item_id' => $item_data['menu_item_id'],
+                  'quantity' => $item_data['quantity'],
+                  'price_at_order' => $item_data['price_at_order'],
+                  'item_notes' => $item_data['item_notes']
+              ],
+              ['%d', '%d', '%d', '%f', '%s']
+          );
+
+          if (!$result_item) {
+              // Si falla la inserción de un ítem, podrías considerar revertir el pedido principal
+              // o marcarlo como fallido. Por ahora, solo enviamos un error.
+              send_error('Error al agregar ítems al pedido: ' . $wpdb->last_error, 500);
+          }
+      }
+      
+      send_success([
+          'message' => 'Pedido realizado exitosamente',
+          'order_id' => (int) $order_id,
+          'total_amount' => $total_amount,
+          'status' => 'pending'
+      ], 201);
       break;
   
   default:

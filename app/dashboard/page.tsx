@@ -4,15 +4,17 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X } from "lucide-react"
+import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X, QrCode } from "lucide-react" // NUEVO: Importar QrCode
 import ImageUpload from "@/components/image-upload"
 import RestaurantImageGallery from "@/components/restaurant-image-gallery"
 import RestaurantMenuGallery from "@/components/restaurant-menu-gallery"
-import MenuAndCategoryManager from "@/components/menu-and-category-manager" // NUEVO: Importar el nuevo componente
+import MenuAndCategoryManager from "@/components/menu-and-category-manager"
+import TableManager from "@/components/table-manager" // NUEVO: Importar TableManager
 
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
 import { getApiUrl } from "@/lib/api-config"
+import type { Table } from "@/lib/api-client" // NUEVO: Importar la interfaz Table
 
 interface UserType {
   id: number
@@ -40,11 +42,11 @@ interface RestaurantMenu {
   createdAt: string
 }
 
-// Update the `Restaurant` interface to include `menus`
+// Update the `Restaurant` interface to include `menus` and `tables`
 interface Restaurant {
   id: number
   name: string
-  slug: string
+  slug: string // Asegúrate de que el slug esté disponible aquí
   description?: string
   address: string
   city: string
@@ -57,7 +59,8 @@ interface Restaurant {
   logo_url?: string
   cover_image_url?: string
   images?: RestaurantImage[]
-  menus?: RestaurantMenu[] // NUEVO: Add menus array
+  menus?: RestaurantMenu[]
+  tables?: Table[] // NUEVO: Add tables array
 }
 
 interface RestaurantImage {
@@ -91,12 +94,14 @@ export default function Dashboard() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [showImageGallery, setShowImageGallery] = useState(false)
 
-  // Add these new state variables inside the `Dashboard` component
   const [selectedRestaurantMenus, setSelectedRestaurantMenus] = useState<RestaurantMenu[] | null>(null)
   const [showMenuGallery, setShowMenuGallery] = useState(false)
 
   // NUEVO: Estado para el modal de gestión de menú y categorías
   const [showMenuAndCategoryManager, setShowMenuAndCategoryManager] = useState(false)
+
+  // NUEVO: Estado para el modal de gestión de mesas
+  const [showTableManager, setShowTableManager] = useState(false)
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
@@ -137,10 +142,6 @@ export default function Dashboard() {
     const token = localStorage.getItem("tubarresto_token")
 
     try {
-      // Replace this line:
-      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-
-      // const response = await fetch(`${apiUrl}/api.php?action=add-restaurant`, {
       const response = await fetch(getApiUrl("ADD_RESTAURANT"), {
         method: "POST",
         headers: {
@@ -191,10 +192,6 @@ export default function Dashboard() {
     })
 
     try {
-      // Replace this line:
-      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-
-      // const response = await fetch(`${apiUrl}/api.php?action=update-restaurant`, {
       const response = await fetch(getApiUrl("UPDATE_RESTAURANT"), {
         method: "POST",
         headers: {
@@ -252,10 +249,6 @@ export default function Dashboard() {
     const token = localStorage.getItem("tubarresto_token")
 
     try {
-      // Replace this line:
-      // const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tubarresto.somediave.com"
-
-      // const response = await fetch(`${apiUrl}/api.php?action=delete-restaurant`, {
       const response = await fetch(getApiUrl("DELETE_RESTAURANT"), {
         method: "POST",
         headers: {
@@ -368,7 +361,6 @@ export default function Dashboard() {
     }
   }
 
-  // Add this new function inside the `Dashboard` component
   const handleRestaurantMenusChange = (menus: RestaurantMenu[]) => {
     if (selectedRestaurant) {
       const updatedRestaurant = { ...selectedRestaurant, menus }
@@ -384,7 +376,6 @@ export default function Dashboard() {
     setShowImageGallery(true)
   }
 
-  // Add this new function inside the `Dashboard` component
   const openMenuGallery = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant) // Keep selectedRestaurant for context
     setSelectedRestaurantMenus(restaurant.menus || []) // Set menus for the gallery
@@ -395,6 +386,12 @@ export default function Dashboard() {
   const openMenuAndCategoryManager = (restaurant: Restaurant) => {
     setSelectedRestaurant(restaurant)
     setShowMenuAndCategoryManager(true)
+  }
+
+  // NUEVO: Función para abrir el modal de gestión de mesas
+  const openTableManager = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant)
+    setShowTableManager(true)
   }
 
   if (isLoading) {
@@ -632,6 +629,13 @@ export default function Dashboard() {
                             className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
                           >
                             Gestionar Menú y Categorías (Manual)
+                          </button>
+                          {/* NUEVO BOTÓN: Gestionar Mesas */}
+                          <button
+                            onClick={() => openTableManager(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            <QrCode className="h-4 w-4 mr-2 inline-block" /> Gestionar Mesas y QR
                           </button>
                           <button
                             onClick={() => openDeleteConfirm(restaurant)}
@@ -940,6 +944,15 @@ export default function Dashboard() {
           <MenuAndCategoryManager
             restaurantId={selectedRestaurant.id}
             onClose={() => setShowMenuAndCategoryManager(false)}
+          />
+        )}
+
+        {/* NUEVO: TableManager Modal */}
+        {showTableManager && selectedRestaurant && (
+          <TableManager
+            restaurantId={selectedRestaurant.id}
+            restaurantSlug={selectedRestaurant.slug} // Pasa el slug del restaurante
+            onClose={() => setShowTableManager(false)}
           />
         )}
 

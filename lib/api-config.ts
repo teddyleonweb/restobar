@@ -13,6 +13,7 @@ export const API_CONFIG = {
     DELETE_RESTAURANT: "?action=delete-restaurant",
     UPLOAD_IMAGE: "?action=upload-image",
     UPLOAD_MENU_FILE: "?action=upload-menu-file",
+    UPLOAD_QR_IMAGE: "?action=upload-qr-image", // NUEVO ENDPOINT
     GET_RESTAURANT_MENUS: "?action=get-restaurant-menus",
     DELETE_RESTAURANT_MENU: "?action=delete-restaurant-menu",
     STATUS: "?action=status",
@@ -24,6 +25,10 @@ export const API_CONFIG = {
     ADD_MENU_CATEGORY: "?action=add-menu-category",
     UPDATE_MENU_CATEGORY: "?action=update-menu-category",
     DELETE_MENU_CATEGORY: "?action=delete-menu-category",
+    ADD_TABLE: "?action=add-table", // NUEVO ENDPOINT
+    GET_TABLES: "?action=get-tables", // NUEVO ENDPOINT
+    UPDATE_TABLE: "?action=update-table", // NUEVO ENDPOINT
+    DELETE_TABLE: "?action=delete-table", // NUEVO ENDPOINT
   },
 } as const
 
