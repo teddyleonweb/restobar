@@ -1324,7 +1324,7 @@ switch ($action) {
           [
               'restaurant_id' => $data['restaurant_id'],
               'title' => $data['title'],
-              'description' => $data['description'] ?? null,
+              'description' => isset($data['description']) ? $data['description'] : null,
               'url' => $data['file_url'],
               'category' => $data['category'] ?? 'other',
               'is_primary' => isset($data['is_primary']) ? (bool)$data['is_primary'] : false,
@@ -2945,6 +2945,8 @@ switch ($action) {
       }
 
       $slug = isset($_GET['slug']) ? sanitize_text_field($_GET['slug']) : '';
+      error_log("DEBUG: get-restaurant-by-slug - Received slug: " . $slug); // LOG: Slug recibido
+      
       if (empty($slug)) {
           send_error('Slug del restaurante es requerido');
       }
@@ -2958,8 +2960,11 @@ switch ($action) {
       ));
 
       if (!$restaurant) {
+          error_log("DEBUG: get-restaurant-by-slug - Restaurant not found or not active for slug: " . $slug); // LOG: Restaurante no encontrado
           send_error('Restaurante no encontrado o inactivo', 404);
       }
+      
+      error_log("DEBUG: get-restaurant-by-slug - Found restaurant: " . $restaurant->name . " (ID: " . $restaurant->id . ")"); // LOG: Restaurante encontrado
 
       $restaurant_id = (int) $restaurant->id;
 
@@ -2970,6 +2975,7 @@ switch ($action) {
            ORDER BY sort_order, name",
           $restaurant_id
       ));
+      error_log("DEBUG: get-restaurant-by-slug - Found " . count($categories) . " categories."); // LOG: Categorías encontradas
 
       // Obtener ítems de menú del restaurante
       $menu_items = $wpdb->get_results($wpdb->prepare(
@@ -2980,6 +2986,7 @@ switch ($action) {
            ORDER BY mi.type, mc.sort_order, mi.sort_order, mi.name",
           $restaurant_id
       ));
+      error_log("DEBUG: get-restaurant-by-slug - Found " . count($menu_items) . " menu items."); // LOG: Ítems de menú encontrados
 
       header("Cache-Control: no-cache, no-store, must-revalidate");
       header("Pragma: no-cache");
