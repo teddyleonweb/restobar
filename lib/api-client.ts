@@ -572,6 +572,16 @@ export class ApiClient {
     return this.handleResponse(response)
   }
 
+  // NUEVO MÉTODO: Obtener mesa por ID (PÚBLICO)
+  static async getTableById(tableId: number): Promise<ApiResponse<{ table: Table }>> {
+    const response = await fetch(getApiUrl("GET_TABLE_BY_ID") + `&table_id=${tableId}`, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+    })
+    return this.handleResponse(response)
+  }
+
   // NUEVO MÉTODO: Realizar un pedido (PÚBLICO)
   static async placeOrder(orderData: {
     restaurant_id: number

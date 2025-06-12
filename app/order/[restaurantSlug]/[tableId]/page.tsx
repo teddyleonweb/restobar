@@ -20,10 +20,32 @@ export default function OrderPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("all") // 'all', 'food', 'drink', or category ID
+  const [apiTestResult, setApiTestResult] = useState<string | null>(null)
+  const [isTestingApi, setIsTestingApi] = useState(false)
 
   // Simulación de obtención de restaurantId a partir del slug
   // En un entorno real, necesitarías una API para obtener el ID del restaurante por su slug.
   // Por ahora, usaremos un ID fijo o una lógica de mapeo simple.
+
+  const handleTestApi = async () => {
+    setIsTestingApi(true)
+    setApiTestResult(null)
+    try {
+      // Use a hardcoded slug for testing, or the current restaurantSlug if available
+      const testSlug = restaurantSlug || "your-default-test-slug" // Replace "your-default-test-slug" with a known slug from your database for testing
+      const response = await ApiClient.getRestaurantBySlug(testSlug)
+      if (response.success) {
+        setApiTestResult("API Test SUCCESS: " + JSON.stringify(response.data, null, 2))
+      } else {
+        setApiTestResult("API Test FAILED: " + (response.error || "Unknown error"))
+      }
+    } catch (err: any) {
+      setApiTestResult("API Test EXCEPTION: " + err.message)
+      console.error("API Test Exception:", err)
+    } finally {
+      setIsTestingApi(false)
+    }
+  }
 
   useEffect(() => {
     const fetchMenuData = async () => {
@@ -87,9 +109,25 @@ export default function OrderPage() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 text-red-600">
         <p className="text-xl font-semibold">Error al cargar el menú:</p>
         <p className="mt-2 text-center">{error}</p>
-        <button onClick={() => window.location.reload()} className="mt-4">
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+        >
           Reintentar
         </button>
+        <button
+          onClick={handleTestApi}
+          disabled={isTestingApi}
+          className="mt-4 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:opacity-50"
+        >
+          {isTestingApi ? "Probando API..." : "Probar API"}
+        </button>
+        {apiTestResult && (
+          <div className="mt-4 p-4 bg-gray-200 text-gray-800 rounded-md w-full max-w-md overflow-auto text-sm">
+            <h3 className="font-bold mb-2">Resultado de la prueba de API:</h3>
+            <pre className="whitespace-pre-wrap break-words">{apiTestResult}</pre>
+          </div>
+        )}
       </div>
     )
   }
