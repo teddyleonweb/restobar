@@ -1,7 +1,7 @@
 "use client"
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { MenuCategory } from "@/lib/api-client"
+import type { MenuCategory } from "@/lib/api-client" // Corregida la ruta de importación
 
 interface CategoryTabsProps {
   categories: MenuCategory[]
@@ -12,7 +12,7 @@ interface CategoryTabsProps {
 export default function CategoryTabs({ categories, activeTab, setActiveTab }: CategoryTabsProps) {
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-      <TabsList className="grid w-full grid-cols-3 md:grid-cols-auto overflow-x-auto justify-start">
+      <TabsList className="grid w-full grid-cols-3 md:grid-cols-auto overflow-x-auto">
         <TabsTrigger value="all">Todo</TabsTrigger>
         <TabsTrigger value="food">Comida</TabsTrigger>
         <TabsTrigger value="drink">Bebida</TabsTrigger>

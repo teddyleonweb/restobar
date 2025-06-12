@@ -21,10 +21,22 @@ export default function OrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("all") // 'all', 'food', 'drink', or category ID
 
+  // Simulación de obtención de restaurantId a partir del slug
+  // En un entorno real, necesitarías una API para obtener el ID del restaurante por su slug.
+  // Por ahora, usaremos un ID fijo o una lógica de mapeo simple.
+  const restaurantId = useMemo(() => {
+    // Esto es un placeholder. Deberías tener una API que te devuelva el ID real
+    // basado en el slug. Por ejemplo: ApiClient.getRestaurantBySlug(restaurantSlug)
+    // Para la demostración, asumimos que el slug 'demo-restaurant' corresponde al ID 1.
+    if (restaurantSlug === "demo-restaurant") return 1
+    // Si tienes múltiples restaurantes, podrías tener un mapeo o una llamada a la API aquí.
+    return null // O un ID por defecto si no se encuentra
+  }, [restaurantSlug])
+
   useEffect(() => {
     const fetchMenuData = async () => {
-      if (!restaurantSlug) {
-        setError("No se proporcionó un slug de restaurante.")
+      if (!restaurantId) {
+        setError("Restaurant not found or invalid slug.")
         setLoading(false)
         return
       }
@@ -32,23 +44,40 @@ export default function OrderPage() {
       setLoading(true)
       setError(null)
       try {
-        const response = await ApiClient.getRestaurantBySlug(restaurantSlug)
+        // Fetch restaurant details (if needed, to display name/logo)
+        // This would ideally be a specific API call like getRestaurantById or getRestaurantBySlug
+        // For now, we'll just set a placeholder restaurant name.
+        setRestaurant({
+          id: restaurantId,
+          name: "Mi Restaurante Digital",
+          description: "Disfruta de nuestros deliciosos platos.",
+          address: "Calle Falsa 123",
+          city: "Ciudad Digital",
+          phone: "123-456-7890",
+          email: "info@mirestaurantedigital.com",
+          logo_url: "/placeholder-logo.png", // Placeholder logo
+          cover_image_url: "/hero-restaurant-digital.png", // Placeholder cover
+        })
 
-        if (response.success && response.data) {
-          setRestaurant(response.data.restaurant)
-          setMenuItems(response.data.menu_items)
-          setCategories(response.data.categories)
+        const [itemsResponse, categoriesResponse] = await Promise.all([
+          ApiClient.getMenuItems(restaurantId),
+          ApiClient.getMenuCategories(restaurantId),
+        ])
+
+        if (itemsResponse.success && itemsResponse.data) {
+          setMenuItems(itemsResponse.data.menu_items)
         } else {
-          setError(response.error || "Restaurante no encontrado o slug inválido.")
-          toast({
-            title: "Error",
-            description: response.error || "No se pudo cargar el menú. Inténtalo de nuevo.",
-            variant: "destructive",
-          })
+          setError(itemsResponse.error || "Failed to fetch menu items.")
+        }
+
+        if (categoriesResponse.success && categoriesResponse.data) {
+          setCategories(categoriesResponse.data.categories)
+        } else {
+          setError(categoriesResponse.error || "Failed to fetch categories.")
         }
       } catch (err) {
         console.error("Error fetching menu data:", err)
-        setError("Error al cargar el menú. Por favor, inténtalo de nuevo más tarde.")
+        setError("Failed to load menu. Please try again later.")
         toast({
           title: "Error",
           description: "No se pudo cargar el menú. Inténtalo de nuevo.",
@@ -60,7 +89,7 @@ export default function OrderPage() {
     }
 
     fetchMenuData()
-  }, [restaurantSlug]) // Dependencia del slug para recargar si cambia
+  }, [restaurantId])
 
   const filteredMenuItems = useMemo(() => {
     if (activeTab === "all") {

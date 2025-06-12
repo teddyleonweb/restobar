@@ -36,9 +36,10 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
   const [editingTable, setEditingTable] = useState<Table | null>(null)
   const [tableToDelete, setTableToDelete] = useState<Table | null>(null)
   const [qrGeneratorTableData, setQrGeneratorTableData] = useState<{
-    tableId: number // Ahora siempre será un ID real
+    tableId: number
     tableNumber: string
     restaurantSlug: string
+    autoUpload?: boolean // NUEVO: Añadir autoUpload flag
   } | null>(null)
 
   const fetchTables = useCallback(async () => {
@@ -95,15 +96,23 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
       })
 
       if (response.success && response.data?.table) {
+        const newTable = response.data.table
         toast({
           title: "Mesa agregada",
-          description: `Mesa ${response.data.table.tableNumber} agregada exitosamente. Ahora genera su QR.`,
+          description: `Mesa ${newTable.tableNumber} agregada. Generando y subiendo QR...`,
         })
         setNewTable({ table_number: "", capacity: 0, location_description: "" })
         setShowAddTableModal(false)
-        // Abrir el generador de QR para la mesa recién creada
-        openQrGenerator(response.data.table)
-        fetchTables() // Recargar la lista de mesas para mostrar la nueva
+
+        // Set data for QR generator and open it with autoUpload
+        setQrGeneratorTableData({
+          tableId: newTable.id,
+          tableNumber: newTable.tableNumber,
+          restaurantSlug: restaurantSlug,
+          autoUpload: true, // NUEVO: Indicar subida automática
+        })
+        setShowQrGeneratorModal(true)
+        // fetchTables() se llamará desde handleQrCodeUploaded después de la subida exitosa del QR
       } else {
         toast({
           title: "Error al agregar mesa",
@@ -245,6 +254,13 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
           description: "La URL del QR ha sido guardada en la mesa.",
         })
         fetchTables() // Recargar para mostrar la URL del QR
+        setShowQrGeneratorModal(false) // Cerrar el modal del generador de QR
+        // NUEVO: Mostrar un toast final de éxito para la adición de la mesa
+        const uploadedTableNumber = qrGeneratorTableData?.tableNumber || "desconocida"
+        toast({
+          title: "Mesa y QR listos",
+          description: `Mesa ${uploadedTableNumber} agregada y QR asignado exitosamente.`,
+        })
       } else {
         toast({
           title: "Error al guardar QR",
@@ -550,11 +566,12 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
         {showQrGeneratorModal && qrGeneratorTableData && (
           <TableQrGenerator
             restaurantId={restaurantId}
-            restaurantSlug={qrGeneratorTableData.restaurantSlug} // Pasa el slug
-            tableId={qrGeneratorTableData.tableId} // Pasa el ID real de la mesa
+            restaurantSlug={qrGeneratorTableData.restaurantSlug}
+            tableId={qrGeneratorTableData.tableId}
             tableNumber={qrGeneratorTableData.tableNumber}
-            onQrCodeUploaded={handleQrCodeUploaded} // Callback para actualizar la mesa
+            onQrCodeUploaded={handleQrCodeUploaded}
             onClose={() => setShowQrGeneratorModal(false)}
+            autoUpload={qrGeneratorTableData.autoUpload} // NUEVO: Pasar la prop autoUpload
           />
         )}
       </div>
