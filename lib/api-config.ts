@@ -29,6 +29,7 @@ export const API_CONFIG = {
     GET_TABLES: "?action=get-tables", // NUEVO ENDPOINT
     UPDATE_TABLE: "?action=update-table", // NUEVO ENDPOINT
     DELETE_TABLE: "?action=delete-table", // NUEVO ENDPOINT
+    GET_RESTAURANT_BY_SLUG: "?action=get-restaurant-by-slug", // NUEVO ENDPOINT
   },
 } as const
 
