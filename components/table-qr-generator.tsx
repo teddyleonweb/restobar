@@ -9,33 +9,26 @@ import { Download, UploadCloud, Loader2, X } from "lucide-react"
 
 interface TableQrGeneratorProps {
   restaurantId: number
-  restaurantSlug: string // NUEVO: Recibe el slug del restaurante
-  tableId: number // Ahora siempre será un ID real de la mesa
+  restaurantSlug: string
+  tableId: number
   tableNumber: string
-  onQrCodeUploaded: (tableId: number, qrCodeUrl: string) => void // Modificado para pasar tableId
+  onQrCodeUploaded: (tableId: number, qrCodeUrl: string) => void
   onClose: () => void
+  autoUpload?: boolean // NUEVO: Propiedad para subida automática
 }
 
 export default function TableQrGenerator({
   restaurantId,
-  restaurantSlug, // Recibe el slug
-  tableId, // Recibe el ID real
+  restaurantSlug,
+  tableId,
   tableNumber,
   onQrCodeUploaded,
   onClose,
+  autoUpload,
 }: TableQrGeneratorProps) {
   const qrCodeRef = useRef<SVGSVGElement>(null) // Ref ahora apunta a SVG
   const [qrData, setQrData] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
-  const [qrGenerated, setQrGenerated] = useState(false)
-
-  useEffect(() => {
-    // Construye la URL del QR usando el slug del restaurante y el ID de la mesa
-    // Asume que tu aplicación Next.js tendrá una ruta como /order/[restaurantSlug]/[tableId]
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
-    const data = `${baseUrl}/order/${restaurantSlug}/${tableId}`
-    setQrData(data)
-  }, [restaurantSlug, tableId]) // Dependencias actualizadas
 
   // Helper function to convert SVG to Canvas
   const convertSvgToCanvas = useCallback(async (): Promise<HTMLCanvasElement | null> => {
@@ -75,40 +68,7 @@ export default function TableQrGenerator({
     })
   }, [])
 
-  const handleGenerateQr = () => {
-    if (qrCodeRef.current) {
-      setQrGenerated(true)
-      toast({
-        title: "QR Generado",
-        description: "El código QR ha sido generado. Puedes descargarlo o subirlo.",
-      })
-    }
-  }
-
-  const handleDownloadQr = async () => {
-    const canvas = await convertSvgToCanvas()
-    if (canvas) {
-      const pngUrl = canvas.toDataURL("image/png")
-      const downloadLink = document.createElement("a")
-      downloadLink.href = pngUrl
-      downloadLink.download = `mesa-${tableNumber}-qr.png`
-      document.body.appendChild(downloadLink)
-      downloadLink.click()
-      document.body.removeChild(downloadLink)
-      toast({
-        title: "Descarga Exitosa",
-        description: `El QR de la mesa ${tableNumber} ha sido descargado.`,
-      })
-    } else {
-      toast({
-        title: "Error",
-        description: "No se pudo generar el QR para descargar.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleUploadQr = async () => {
+  const handleUploadQr = useCallback(async () => {
     setIsLoading(true)
     const canvas = await convertSvgToCanvas()
 
@@ -167,6 +127,43 @@ export default function TableQrGenerator({
     } finally {
       setIsLoading(false)
     }
+  }, [convertSvgToCanvas, qrData, restaurantId, tableId, tableNumber, onQrCodeUploaded])
+
+  useEffect(() => {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+    const data = `${baseUrl}/order/${restaurantSlug}/${tableId}`
+    setQrData(data)
+
+    if (autoUpload && data) {
+      // Pequeño retraso para asegurar que el QR se ha renderizado en el SVG ref
+      const timer = setTimeout(() => {
+        handleUploadQr()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [restaurantSlug, tableId, autoUpload, handleUploadQr])
+
+  const handleDownloadQr = async () => {
+    const canvas = await convertSvgToCanvas()
+    if (canvas) {
+      const pngUrl = canvas.toDataURL("image/png")
+      const downloadLink = document.createElement("a")
+      downloadLink.href = pngUrl
+      downloadLink.download = `mesa-${tableNumber}-qr.png`
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      document.body.removeChild(downloadLink)
+      toast({
+        title: "Descarga Exitosa",
+        description: `El QR de la mesa ${tableNumber} ha sido descargado.`,
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: "No se pudo generar el QR para descargar.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -200,14 +197,11 @@ export default function TableQrGenerator({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Button onClick={handleGenerateQr} disabled={qrGenerated}>
-              Generar QR
-            </Button>
-            <Button onClick={handleDownloadQr} disabled={!qrGenerated} variant="outline">
+            <Button onClick={handleDownloadQr} disabled={!qrData} variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Descargar QR
             </Button>
-            <Button onClick={handleUploadQr} disabled={!qrGenerated || isLoading}>
+            <Button onClick={handleUploadQr} disabled={!qrData || isLoading}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UploadCloud className="h-4 w-4 mr-2" />}
               {isLoading ? "Subiendo..." : "Subir QR al Servidor"}
             </Button>
