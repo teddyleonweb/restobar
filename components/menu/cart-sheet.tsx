@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MinusCircle, PlusCircle, Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { ApiClient } from "@/lib/api-client"
 
 // Define el tipo para un ítem en el carrito (debe coincidir con el de page.tsx)
 interface CartItem {
@@ -24,9 +25,10 @@ interface CartSheetProps {
   totalPrice: number
   restaurantId: number
   tableId: number
+  onOrderPlaced: () => void // Nueva prop para limpiar el carrito
 }
 
-export default function CartSheet({
+export function CartSheet({
   isOpen,
   onClose,
   cartItems,
@@ -35,6 +37,7 @@ export default function CartSheet({
   totalPrice,
   restaurantId,
   tableId,
+  onOrderPlaced,
 }: CartSheetProps) {
   const handlePlaceOrder = async () => {
     if (cartItems.length === 0) {
@@ -46,52 +49,43 @@ export default function CartSheet({
       return
     }
 
-    // Aquí iría la lógica para enviar el pedido a tu API
-    // Por ejemplo:
-    // try {
-    //   const orderData = {
-    //     restaurant_id: restaurantId,
-    //     table_id: tableId,
-    //     items: cartItems.map(item => ({
-    //       menu_item_id: item.id,
-    //       quantity: item.quantity,
-    //       price_at_order: item.price // Guardar el precio en el momento del pedido
-    //     })),
-    //     total_amount: totalPrice,
-    //     // Otros campos como notas, estado del pedido, etc.
-    //   };
-    //   const response = await ApiClient.placeOrder(orderData); // Necesitarías crear este método en ApiClient
-    //   if (response.success) {
-    //     toast({
-    //       title: 'Pedido Realizado',
-    //       description: 'Tu pedido ha sido enviado exitosamente.',
-    //     });
-    //     // Limpiar carrito y cerrar sheet
-    //     // setCart([]); // Esto lo manejaría el componente padre
-    //     onClose();
-    //   } else {
-    //     toast({
-    //       title: 'Error al realizar pedido',
-    //       description: response.error || 'Ocurrió un error desconocido.',
-    //       variant: 'destructive',
-    //     });
-    //   }
-    // } catch (error) {
-    //   console.error('Error placing order:', error);
-    //   toast({
-    //     title: 'Error de conexión',
-    //     description: 'No se pudo conectar con el servidor para realizar el pedido.',
-    //     variant: 'destructive',
-    //   });
-    // }
+    try {
+      const orderData = {
+        restaurant_id: restaurantId,
+        table_id: tableId,
+        items: cartItems.map((item) => ({
+          menu_item_id: item.id,
+          quantity: item.quantity,
+          // price_at_order no es necesario aquí, la API lo calcula
+        })),
+        total_amount: totalPrice, // Esto es solo para referencia, la API lo recalcula
+        // Otros campos como customer_notes si los añades
+      }
 
-    toast({
-      title: "Funcionalidad de Pedido",
-      description: 'La lógica para "Realizar Pedido" aún no está implementada en la API. (Simulación)',
-      variant: "default",
-    })
-    console.log("Pedido a realizar:", { restaurantId, tableId, cartItems, totalPrice })
-    onClose() // Cerrar el carrito después de la "simulación"
+      const response = await ApiClient.placeOrder(orderData)
+
+      if (response.success) {
+        toast({
+          title: "Pedido Realizado",
+          description: `Tu pedido #${response.data?.order_id} ha sido enviado exitosamente.`,
+        })
+        onOrderPlaced() // Limpiar el carrito en el componente padre
+        onClose()
+      } else {
+        toast({
+          title: "Error al realizar pedido",
+          description: response.error || "Ocurrió un error desconocido al enviar el pedido.",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error("Error placing order:", error)
+      toast({
+        title: "Error de conexión",
+        description: `No se pudo conectar con el servidor para realizar el pedido: ${error.message}`,
+        variant: "destructive",
+      })
+    }
   }
 
   return (

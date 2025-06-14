@@ -4,16 +4,19 @@ import type { MenuItem } from "@/lib/api-client"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
+import { Button } from "@/components/ui/button" // Importar `Button` de "@/components/ui/button".
 
 // Importar el componente `Image` de `next/image`
 import Image from "next/image"
 
+// Modificar la interfaz `MenuItemCardProps` para incluir `onAddToCart`:
 interface MenuItemCardProps {
   item: MenuItem
-  // Eliminar: onAddToCart: (item: MenuItem) => void;
+  onAddToCart: (item: MenuItem) => void // Reintroducir esta prop
 }
 
-export default function MenuItemCard({ item /* Eliminar: , onAddToCart */ }: MenuItemCardProps) {
+// Modificar la declaración del componente `MenuItemCard` para aceptar `onAddToCart`:
+export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
   return (
     // Modificar el componente `Card` para que tenga `overflow-hidden`
     <Card className="bg-secondary text-secondary-foreground overflow-hidden">
@@ -57,10 +60,10 @@ export default function MenuItemCard({ item /* Eliminar: , onAddToCart */ }: Men
         </div>
       </CardContent>
       <CardFooter className="flex justify-between p-4 pt-0">
-        {/* Eliminar este bloque completo */}
-        {/* <Button onClick={() => onAddToCart(item)} className="w-full">
+        {/* Dentro de `CardFooter`, reintroducir el botón "Añadir al Carrito": */}
+        <Button onClick={() => onAddToCart(item)} className="w-full">
           Añadir al Carrito
-        </Button> */}
+        </Button>
       </CardFooter>
     </Card>
   )

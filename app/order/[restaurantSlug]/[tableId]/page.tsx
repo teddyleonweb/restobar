@@ -8,6 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import MenuItemCard from "@/components/menu/menu-item-card"
 import CategoryTabs from "@/components/menu/category-tabs"
+import { ShoppingCart } from "lucide-react"
+import { CartSheet } from "@/components/menu/cart-sheet"
+
+// Definir el tipo CartItem (debe coincidir con el de CartSheet.tsx)
+interface CartItem {
+  id: number
+  name: string
+  price: number
+  quantity: number
+  image_url?: string | null
+}
 
 export default function OrderPage() {
   const params = useParams()
@@ -22,6 +33,10 @@ export default function OrderPage() {
   const [activeTab, setActiveTab] = useState<string>("all") // 'all', 'food', 'drink', or category ID
   const [apiTestResult, setApiTestResult] = useState<string | null>(null)
   const [isTestingApi, setIsTestingApi] = useState(false)
+
+  // Añadir los estados para el carrito
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [isCartOpen, setIsCartOpen] = useState(false)
 
   // Simulación de obtención de restaurantId a partir del slug
   // En un entorno real, necesitarías una API para obtener el ID del restaurante por su slug.
@@ -96,6 +111,51 @@ export default function OrderPage() {
     return menuItems.filter((item) => item.category_id?.toString() === activeTab)
   }, [menuItems, activeTab])
 
+  // Función para añadir un ítem al carrito
+  const addToCart = (item: MenuItem) => {
+    setCartItems((prevItems) => {
+      const existingItem = prevItems.find((cartItem) => cartItem.id === item.id)
+      if (existingItem) {
+        return prevItems.map((cartItem) =>
+          cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem,
+        )
+      } else {
+        return [
+          ...prevItems,
+          { id: item.id, name: item.name, price: item.price, quantity: 1, image_url: item.image_url },
+        ]
+      }
+    })
+    toast({
+      title: "Añadido al carrito",
+      description: `${item.name} ha sido añadido.`,
+    })
+  }
+
+  // Función para actualizar la cantidad de un ítem en el carrito
+  const updateCartQuantity = (itemId: number, quantity: number) => {
+    setCartItems((prevItems) => {
+      if (quantity <= 0) {
+        return prevItems.filter((item) => item.id !== itemId)
+      }
+      return prevItems.map((item) => (item.id === itemId ? { ...item, quantity: quantity } : item))
+    })
+  }
+
+  // Función para eliminar un ítem del carrito
+  const removeCartItem = (itemId: number) => {
+    setCartItems((prevItems) => prevItems.filter((item) => item.id !== itemId))
+    toast({
+      title: "Eliminado del carrito",
+      description: "El ítem ha sido eliminado del carrito.",
+    })
+  }
+
+  // Calcular el precio total del carrito
+  const totalPrice = useMemo(() => {
+    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
+  }, [cartItems])
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -154,6 +214,18 @@ export default function OrderPage() {
             </div>
           </div>
           {/* Eliminar el botón del carrito aquí */}
+          <button
+            onClick={() => setIsCartOpen(true)}
+            className="relative p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
+            aria-label="Ver carrito"
+          >
+            <ShoppingCart className="h-6 w-6" />
+            {cartItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {cartItems.length}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -173,7 +245,7 @@ export default function OrderPage() {
               {/* Adjust height based on header/tabs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredMenuItems.length > 0 ? (
-                  filteredMenuItems.map((item) => <MenuItemCard key={item.id} item={item} />) // Eliminar onAddToCart={addToCart}
+                  filteredMenuItems.map((item) => <MenuItemCard key={item.id} item={item} onAddToCart={addToCart} />) // Eliminar onAddToCart={addToCart}
                 ) : (
                   <p className="col-span-full text-center text-gray-500">No hay ítems en esta categoría.</p>
                 )}
@@ -182,6 +254,17 @@ export default function OrderPage() {
           </CardContent>
         </Card>
       </main>
+      <CartSheet
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cartItems={cartItems}
+        onUpdateQuantity={updateCartQuantity}
+        onRemoveItem={removeCartItem}
+        totalPrice={totalPrice}
+        restaurantId={restaurant?.id || 0} // Asegúrate de pasar el ID del restaurante
+        tableId={Number.parseInt(tableId)} // Asegúrate de pasar el ID de la mesa
+        onOrderPlaced={() => setCartItems([])} // Limpiar el carrito al realizar el pedido
+      />
     </div>
   )
 }

@@ -325,7 +325,6 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
                   <TableHead>Número de Mesa</TableHead>
                   <TableHead>Capacidad</TableHead>
                   <TableHead>Descripción</TableHead>
-                  <TableHead>QR</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -336,20 +335,6 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
                     <TableCell className="font-medium">{table.tableNumber}</TableCell>
                     <TableCell>{table.capacity}</TableCell>
                     <TableCell>{table.locationDescription || "N/A"}</TableCell>
-                    <TableCell>
-                      {table.qrCodeUrl ? (
-                        <a
-                          href={table.qrCodeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-red-500 hover:underline flex items-center"
-                        >
-                          <QrCode className="h-4 w-4 mr-1" /> Ver QR
-                        </a>
-                      ) : (
-                        <span className="text-gray-400">No generado</span>
-                      )}
-                    </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
