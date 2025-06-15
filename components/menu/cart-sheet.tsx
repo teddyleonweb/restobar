@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { MinusCircle, PlusCircle, Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { ApiClient } from "@/lib/api-client" // Importar ApiClient
-import { getApiUrl } from "@/lib/api-config"
+import { getApiUrl } from "@/lib/api-config" // Importar getApiUrl desde api-config
 
 // Define el tipo para un ítem en el carrito (debe coincidir con el de page.tsx)
 interface CartItem {
@@ -85,14 +85,18 @@ export default function CartSheet({
       console.log("handlePlaceOrder: Respuesta de la API:", response) // Log después de la llamada a la API
 
       if (response.success) {
+        console.log("handlePlaceOrder: API response success is true. About to call toast().")
         toast({
           title: "Pedido Realizado",
           description: "Tu pedido ha sido enviado exitosamente.",
         })
-        // Limpiar carrito y cerrar sheet
+        console.log("handlePlaceOrder: toast() called. About to call setCart().")
         setCart([]) // Asumiendo que setCart es accesible o se pasa un callback para limpiar
+        console.log("handlePlaceOrder: setCart() called. About to call onClose().")
         onClose()
+        console.log("handlePlaceOrder: onClose() called. Order process complete.")
       } else {
+        console.log("handlePlaceOrder: API response success is false. About to show error toast.")
         toast({
           title: "Error al realizar pedido",
           description: response.error || "Ocurrió un error desconocido.",
