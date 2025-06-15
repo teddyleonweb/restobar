@@ -136,6 +136,18 @@ export class ApiClient {
   }
 
   private static async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    console.log("handleResponse: Recibida respuesta:", response)
+
+    if (
+      !response ||
+      typeof response.json !== "function" ||
+      typeof response.text !== "function" ||
+      typeof response.headers.get !== "function"
+    ) {
+      console.error("handleResponse: Objeto de respuesta inválido o métodos faltantes:", response)
+      throw new Error("Invalid API response object received: Missing expected methods.")
+    }
+
     const contentType = response.headers.get("content-type")
     const isJson = contentType && contentType.includes("application/json")
 
@@ -166,6 +178,7 @@ export class ApiClient {
     if (isJson) {
       try {
         const result = await response.json()
+        console.log("handleResponse: JSON parseado:", result)
         return result
       } catch (parseError) {
         const rawText = await response.text()
