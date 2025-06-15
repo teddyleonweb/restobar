@@ -1,3 +1,4 @@
+// Centralized API configuration
 export const API_CONFIG = {
   // Assuming NEXT_PUBLIC_API_BASE_URL might already include /api.php.
   // If your actual API base is just "https://tubarresto.somediave.com",

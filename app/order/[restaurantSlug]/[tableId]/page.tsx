@@ -192,8 +192,6 @@ export default function OrderPage() {
     )
   }
 
-  console.log("OrderPage: Tipo de setCart antes de pasar a CartSheet:", typeof setCart) // NUEVO LOG DE DEPURACIÓN
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header del Restaurante */}
@@ -299,7 +297,6 @@ export default function OrderPage() {
         tableId={Number.parseInt(tableId)}
         customerFirstName={customerFirstName} // Pasar nombre
         customerLastName={customerLastName} // Pasar apellido
-        setCart={setCart} // Pasar la función setCart
       />
     </div>
   )
