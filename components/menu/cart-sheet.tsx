@@ -78,7 +78,9 @@ export default function CartSheet({
         total_amount: totalPrice,
         // Otros campos como notas generales del cliente (customer_notes) si se añaden
       }
+      console.log("handlePlaceOrder: Datos del pedido a enviar:", orderData) // Log antes de la llamada a la API
       const response = await ApiClient.placeOrder(orderData)
+      console.log("handlePlaceOrder: Respuesta de la API:", response) // Log después de la llamada a la API
 
       if (response.success) {
         toast({
