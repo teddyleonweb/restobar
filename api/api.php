@@ -645,8 +645,11 @@ switch ($action) {
       }
       
       // Validar campos requeridos
-      if (empty($data['name']) || empty($data['address']) || empty($data['city'])) {
-          send_error('Nombre, dirección y ciudad son requeridos');
+      $required_fields = ['name', 'address', 'city'];
+      foreach ($required_fields as $field) {
+          if (empty($data[$field])) {
+              send_error("El campo {$field} es requerido");
+          }
       }
       
       global $wpdb;
@@ -841,7 +844,7 @@ switch ($action) {
               'width' => (int) $img->width,
               'height' => (int) $img->height,
               'fileSize' => (int) $img->file_size,
-              'createdAt' => $img->created_at
+              'createdAt' => $img->createdAt
           ];
       }, $images);
 
@@ -3052,6 +3055,11 @@ case 'place-order':
         send_error('Método no permitido', 405);
     }
 
+    // Habilitar errores para depuración en el log de PHP
+    ini_set('display_errors', 1);
+    error_reporting(E_ALL);
+    error_log("DEBUG: place-order endpoint received data: " . print_r($data, true)); // Log de depuración
+
     // Validar campos requeridos
     if (empty($data['restaurant_id']) || empty($data['table_id']) || !isset($data['items']) || !is_array($data['items']) || empty($data['items'])) {
         send_error('restaurant_id, table_id y items (array no vacío) son requeridos');
@@ -3059,10 +3067,16 @@ case 'place-order':
 
     $restaurant_id = (int) $data['restaurant_id'];
     $table_id = (int) $data['table_id'];
-    $customer_first_name = isset($data['customer_first_name']) ? sanitize_text_field($data['customer_first_name']) : null; // NUEVO
-    $customer_last_name = isset($data['customer_last_name']) ? sanitize_text_field($data['customer_last_name']) : null;   // NUEVO
+    // Asegurarse de que los campos de nombre y apellido se obtengan correctamente
+    $customer_first_name = isset($data['customer_first_name']) ? sanitize_text_field($data['customer_first_name']) : null;
+    $customer_last_name = isset($data['customer_last_name']) ? sanitize_text_field($data['customer_last_name']) : null;
     $customer_notes = isset($data['customer_notes']) ? sanitize_textarea_field($data['customer_notes']) : null;
     $items = $data['items'];
+
+    error_log("DEBUG: customer_first_name: " . ($customer_first_name ?? 'NULL'));
+    error_log("DEBUG: customer_last_name: " . ($customer_last_name ?? 'NULL'));
+    error_log("DEBUG: customer_notes: " . ($customer_notes ?? 'NULL'));
+
 
     global $wpdb;
 
@@ -3128,6 +3142,7 @@ case 'place-order':
             'price_at_order' => $price_at_order,
             'item_notes' => $item_notes // NUEVO
         ];
+        error_log("DEBUG: Item {$menu_item_id} notes: " . ($item_notes ?? 'NULL')); // Log de depuración para notas de ítem
     }
 
     // Insertar el pedido principal
