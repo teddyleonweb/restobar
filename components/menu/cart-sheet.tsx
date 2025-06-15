@@ -91,6 +91,7 @@ export default function CartSheet({
           description: "Tu pedido ha sido enviado exitosamente.",
         })
         console.log("handlePlaceOrder: toast() called. About to call setCart().")
+        console.log("handlePlaceOrder: Valor de setCart:", setCart) // NUEVO LOG
         setCart([]) // Asumiendo que setCart es accesible o se pasa un callback para limpiar
         console.log("handlePlaceOrder: setCart() called. About to call onClose().")
         onClose()
