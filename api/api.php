@@ -3228,13 +3228,35 @@ case 'get-orders':
 
   // Obtener órdenes del restaurante, uniendo con la tabla de mesas para obtener el número de mesa
   $orders = $wpdb->get_results($wpdb->prepare(
-      "SELECT o.*, t.table_number 
+      "SELECT o.*, t.table_number
        FROM kvq_tubarresto_orders o
        JOIN kvq_tubarresto_tables t ON o.table_id = t.id
        WHERE o.restaurant_id = %d
        ORDER BY o.created_at DESC",
       $restaurant_id
   ));
+
+  // Loop through orders to fetch their items
+  foreach ($orders as &$order) {
+      $order_items = $wpdb->get_results($wpdb->prepare(
+          "SELECT oi.*, mi.name as menu_item_name
+           FROM kvq_tubarresto_order_items oi
+           JOIN kvq_tubarresto_menu_items mi ON oi.menu_item_id = mi.id
+           WHERE oi.order_id = %d
+           ORDER BY oi.id ASC",
+          $order->id
+      ));
+
+      $order->items = array_map(function($item) {
+          return [
+              'menu_item_id' => (int) $item->menu_item_id,
+              'menu_item_name' => $item->menu_item_name, // Add item name
+              'quantity' => (int) $item->quantity,
+              'price_at_order' => (float) $item->price_at_order,
+              'item_notes' => $item->item_notes // Add item notes
+          ];
+      }, $order_items);
+  }
 
   header("Cache-Control: no-cache, no-store, must-revalidate");
   header("Pragma: no-cache");
@@ -3246,19 +3268,85 @@ case 'get-orders':
               'restaurant_id' => (int) $order->restaurant_id,
               'table_id' => (int) $order->table_id,
               'table_number' => $order->table_number, // Incluir el número de mesa
-              'customer_first_name' => $order->customer_first_name, // NUEVO
-              'customer_last_name' => $order->customer_last_name,   // NUEVO
+              'customer_first_name' => $order->customer_first_name,
+              'customer_last_name' => $order->customer_last_name,
               'total_amount' => (float) $order->total_amount,
               'status' => $order->status,
               'customer_notes' => $order->customer_notes,
               'created_at' => $order->created_at,
-              'updated_at' => $order->updated_at
+              'updated_at' => $order->updated_at,
+              'items' => $order->items // Add the items array here
           ];
       }, $orders),
       'total_orders' => count($orders)
   ]);
   break;
-// --- FIN NUEVA FUNCIONALIDAD: OBTENER ÓRDENES ---
+// --- NUEVA FUNCIONALIDAD: OBTENER ÓRDENES ---
+
+// --- NUEVA FUNCIONALIDAD: ACTUALIZAR ESTADO DE ORDEN ---
+case 'update-order-status':
+    if ($method !== 'POST') {
+        send_error('Método no permitido', 405);
+    }
+
+    // Verificar autenticación
+    $user_data = verify_token($token);
+    if (!$user_data) {
+        send_error('No autorizado', 401);
+    }
+
+    // Validar campos requeridos
+    if (empty($data['id']) || !is_numeric($data['id']) || empty($data['status'])) {
+        send_error('ID de orden y estado son requeridos');
+    }
+
+    $order_id = (int) $data['id'];
+    $new_status = sanitize_text_field($data['status']);
+
+    // Validar que el nuevo estado sea uno permitido
+    $allowed_statuses = ['pending', 'processing', 'completed', 'cancelled'];
+    if (!in_array($new_status, $allowed_statuses)) {
+        send_error('Estado de orden inválido. Estados permitidos: ' . implode(', ', $allowed_statuses), 400);
+    }
+
+    global $wpdb;
+
+    // Verificar que la orden existe y pertenece a un restaurante del usuario autenticado
+    $order = $wpdb->get_row($wpdb->prepare(
+        "SELECT o.*, r.user_id
+         FROM kvq_tubarresto_orders o
+         JOIN kvq_tubarresto_restaurants r ON o.restaurant_id = r.id
+         WHERE o.id = %d AND r.user_id = %d",
+        $order_id,
+        $user_data['id']
+    ));
+
+    if (!$order) {
+        send_error('Orden no encontrada o no autorizada', 404);
+    }
+
+    // Actualizar el estado de la orden
+    $result = $wpdb->update(
+        'kvq_tubarresto_orders',
+        [
+            'status' => $new_status,
+            'updated_at' => current_time('mysql')
+        ],
+        ['id' => $order_id],
+        ['%s', '%s'],
+        ['%d']
+    );
+
+    if ($result === false) {
+        send_error('Error al actualizar el estado de la orden: ' . $wpdb->last_error, 500);
+    }
+
+    send_success([
+        'message' => 'Estado de orden actualizado exitosamente',
+        'order_id' => (int) $order_id,
+        'new_status' => $new_status
+    ]);
+    break;
 
 default:
     send_error('Endpoint no encontrado', 404);

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table as ShadcnTable, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Plus, Edit, Trash2, QrCode, X, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, QrCode, X, Loader2, ShoppingCart } from "lucide-react"
 import TableQrGenerator from "./table-qr-generator" // Importar el nuevo componente de QR
 
 interface TableManagerProps {
@@ -361,6 +361,14 @@ export default function TableManager({ restaurantId, restaurantSlug, onClose }: 
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end space-x-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => window.open(`/orders/${table.id}`, "_blank")} // Open in new tab
+                          title="Ver Órdenes"
+                        >
+                          <ShoppingCart className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"

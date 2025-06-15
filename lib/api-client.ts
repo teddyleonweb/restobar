@@ -97,6 +97,14 @@ export interface Table {
 
 // Add the new Order interface near other interfaces like Table
 // NUEVA INTERFACE: Order
+export interface OrderItem {
+  menu_item_id: number
+  menu_item_name: string // Added for display
+  quantity: number
+  price_at_order: number
+  item_notes?: string | null
+}
+
 export interface Order {
   id: number
   restaurant_id: number
@@ -104,11 +112,12 @@ export interface Order {
   table_number?: string // To be populated by the backend or joined
   total_amount: number
   status: "pending" | "processing" | "completed" | "cancelled"
-  customer_first_name?: string | null // NUEVO
-  customer_last_name?: string | null // NUEVO
+  customer_first_name?: string | null
+  customer_last_name?: string | null
   customer_notes?: string | null
   created_at: string
   updated_at?: string
+  items: OrderItem[] // Add the items array here
 }
 
 // NUEVA INTERFACE: OrderItem para el envío del pedido
@@ -618,12 +627,30 @@ export class ApiClient {
 
   // Add the new getOrders method in the ApiClient class
   // NUEVO MÉTODO: Obtener órdenes
-  static async getOrders(restaurantId: number): Promise<ApiResponse<{ orders: Order[]; total_orders: number }>> {
-    const response = await fetch(getApiUrl("GET_ORDERS") + `&restaurant_id=${restaurantId}`, {
+  static async getOrders(
+    restaurantId: number,
+    tableId?: number,
+  ): Promise<ApiResponse<{ orders: Order[]; total_orders: number }>> {
+    let url = getApiUrl("GET_ORDERS") + `&restaurant_id=${restaurantId}`
+    if (tableId) {
+      url += `&table_id=${tableId}`
+    }
+    const response = await fetch(url, {
       method: "GET",
       headers: this.getAuthHeaders(),
       mode: "cors",
       cache: "no-store",
+    })
+    return this.handleResponse(response)
+  }
+
+  // Add the new updateOrderStatus method in the ApiClient class
+  // NUEVO MÉTODO: Actualizar el estado de una orden
+  static async updateOrderStatus(orderId: number, status: Order["status"]): Promise<ApiResponse> {
+    const response = await fetch(getApiUrl("UPDATE_ORDER_STATUS"), {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ id: orderId, status: status }),
     })
     return this.handleResponse(response)
   }

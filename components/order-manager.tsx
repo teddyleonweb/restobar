@@ -1,12 +1,15 @@
 "use client"
 
+import { SheetFooter } from "@/components/ui/sheet"
+
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { X, Loader2, RefreshCw } from "lucide-react"
-import { ApiClient, type Order } from "@/lib/api-client"
+import { X, Loader2, RefreshCw, Eye } from "lucide-react" // Import Eye icon
+import { ApiClient, type Order, type OrderItem } from "@/lib/api-client" // Import OrderItem
 import { toast } from "@/hooks/use-toast"
+import { ScrollArea } from "@/components/ui/scroll-area" // Import ScrollArea
 
 interface OrderManagerProps {
   restaurantId: number
@@ -17,6 +20,8 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null) // New state for selected order
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
 
   const fetchOrders = async () => {
     setIsLoading(true)
@@ -77,6 +82,36 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
     })
   }
 
+  const handleUpdateOrderStatus = async (orderId: number, newStatus: Order["status"]) => {
+    setIsUpdatingStatus(true)
+    try {
+      const response = await ApiClient.updateOrderStatus(orderId, newStatus)
+      if (response.success) {
+        toast({
+          title: "Estado Actualizado",
+          description: `Orden #${orderId} actualizada a ${newStatus}.`,
+        })
+        fetchOrders() // Refresh orders list
+        setSelectedOrder(null) // Close details dialog
+      } else {
+        toast({
+          title: "Error al actualizar estado",
+          description: response.error || "Ocurrió un error desconocido.",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Error updating order status:", err)
+      toast({
+        title: "Error de conexión",
+        description: "No se pudo conectar con el servidor para actualizar el estado.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingStatus(false)
+    }
+  }
+
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col">
@@ -118,17 +153,21 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
                   <TableRow>
                     <TableHead>ID Orden</TableHead>
                     <TableHead>Mesa</TableHead>
+                    <TableHead>Cliente</TableHead>
                     <TableHead>Monto Total</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead>Notas del Cliente</TableHead>
                     <TableHead>Fecha</TableHead>
+                    <TableHead>Acciones</TableHead> {/* New column for actions */}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {orders.map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.id}</TableCell>
-                      <TableCell>{order.table_id}</TableCell>
+                      <TableCell>{order.table_number}</TableCell>
+                      <TableCell>
+                        {order.customer_first_name} {order.customer_last_name}
+                      </TableCell>
                       <TableCell>${order.total_amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <span
@@ -137,8 +176,12 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
                           {order.status}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">{order.customer_notes || "N/A"}</TableCell>
                       <TableCell>{formatDate(order.created_at)}</TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedOrder(order)}>
+                          <Eye className="h-4 w-4 mr-2" /> Ver Detalles
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -153,6 +196,99 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
           </Button>
         </div>
       </DialogContent>
+
+      {/* Order Details Dialog */}
+      {selectedOrder && (
+        <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+            <DialogHeader className="flex flex-row items-center justify-between pb-4">
+              <div>
+                <DialogTitle className="text-2xl font-bold text-gray-900 font-playfair">
+                  Detalles de la Orden #{selectedOrder.id}
+                </DialogTitle>
+                <DialogDescription className="text-gray-600">
+                  Mesa: {selectedOrder.table_number} | Cliente: {selectedOrder.customer_first_name}{" "}
+                  {selectedOrder.customer_last_name}
+                </DialogDescription>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(null)} className="hover:bg-gray-100">
+                <X className="h-5 w-5" />
+                <span className="sr-only">Cerrar</span>
+              </Button>
+            </DialogHeader>
+
+            <ScrollArea className="flex-1 py-4 pr-4">
+              <h3 className="text-lg font-semibold mb-3">Productos:</h3>
+              {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                <div className="space-y-4">
+                  {selectedOrder.items.map((item: OrderItem, index: number) => (
+                    <div key={index} className="border-b pb-3 last:border-b-0">
+                      <div className="flex justify-between items-center">
+                        <p className="font-medium">
+                          {item.menu_item_name} (x{item.quantity})
+                        </p>
+                        <p className="font-semibold">${(item.price_at_order * item.quantity).toFixed(2)}</p>
+                      </div>
+                      {item.item_notes && <p className="text-sm text-gray-600 italic mt-1">Notas: {item.item_notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500">No hay productos en esta orden.</p>
+              )}
+
+              {selectedOrder.customer_notes && (
+                <div className="mt-6 p-3 bg-gray-50 rounded-md border border-gray-200">
+                  <h3 className="text-md font-semibold mb-1">Notas Generales del Cliente:</h3>
+                  <p className="text-gray-700">{selectedOrder.customer_notes}</p>
+                </div>
+              )}
+            </ScrollArea>
+
+            <SheetFooter className="flex flex-col gap-2 p-4 border-t">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total de la Orden:</span>
+                <span>${selectedOrder.total_amount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                {selectedOrder.status === "pending" && (
+                  <Button
+                    onClick={() => handleUpdateOrderStatus(selectedOrder.id, "processing")}
+                    disabled={isUpdatingStatus}
+                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    {isUpdatingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Marcar como En Proceso
+                  </Button>
+                )}
+                {selectedOrder.status === "processing" && (
+                  <Button
+                    onClick={() => handleUpdateOrderStatus(selectedOrder.id, "completed")}
+                    disabled={isUpdatingStatus}
+                    className="bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    {isUpdatingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Marcar como Completada
+                  </Button>
+                )}
+                {(selectedOrder.status === "pending" || selectedOrder.status === "processing") && (
+                  <Button
+                    onClick={() => handleUpdateOrderStatus(selectedOrder.id, "cancelled")}
+                    disabled={isUpdatingStatus}
+                    variant="destructive"
+                  >
+                    {isUpdatingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Cancelar Orden
+                  </Button>
+                )}
+              </div>
+              <Button onClick={() => setSelectedOrder(null)} variant="outline">
+                Cerrar
+              </Button>
+            </SheetFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   )
 }
