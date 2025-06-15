@@ -45,6 +45,7 @@ export default function CartSheet({
   setCart, // NUEVO
 }: CartSheetProps) {
   const handlePlaceOrder = async () => {
+    console.log("handlePlaceOrder: Función iniciada.")
     if (cartItems.length === 0) {
       toast({
         title: "Carrito vacío",
@@ -179,7 +180,14 @@ export default function CartSheet({
             <span className="text-lg font-semibold">Total:</span>
             <span className="text-2xl font-bold text-primary">${totalPrice.toFixed(2)}</span>
           </div>
-          <Button onClick={handlePlaceOrder} className="w-full" disabled={cartItems.length === 0}>
+          <Button
+            onClick={() => {
+              console.log("Botón 'Realizar Pedido' clickeado.")
+              handlePlaceOrder()
+            }}
+            className="w-full"
+            disabled={cartItems.length === 0}
+          >
             Realizar Pedido
           </Button>
         </SheetFooter>
