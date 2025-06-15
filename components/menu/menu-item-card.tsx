@@ -55,9 +55,7 @@ export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
       </CardContent>
       <CardFooter className="flex flex-col gap-2">
         <div className="w-full">
-          <Label htmlFor={`notes-${item.id}`} className="sr-only">
-            Notas para {item.name}
-          </Label>
+          <Label htmlFor={`notes-${item.id}`}>Notas para el ítem</Label>
           <Textarea
             id={`notes-${item.id}`}
             placeholder="Ej: poca salsa, sin cebolla..."

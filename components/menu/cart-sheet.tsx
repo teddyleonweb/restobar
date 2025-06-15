@@ -45,7 +45,6 @@ export default function CartSheet({
   setCart, // NUEVO
 }: CartSheetProps) {
   const handlePlaceOrder = async () => {
-    console.log("handlePlaceOrder: Función iniciada.")
     if (cartItems.length === 0) {
       toast({
         title: "Carrito vacío",
@@ -78,9 +77,7 @@ export default function CartSheet({
         total_amount: totalPrice,
         // Otros campos como notas generales del cliente (customer_notes) si se añaden
       }
-      console.log("handlePlaceOrder: Datos del pedido a enviar:", orderData) // Log antes de la llamada a la API
       const response = await ApiClient.placeOrder(orderData)
-      console.log("handlePlaceOrder: Respuesta de la API:", response) // Log después de la llamada a la API
 
       if (response.success) {
         toast({
@@ -182,14 +179,7 @@ export default function CartSheet({
             <span className="text-lg font-semibold">Total:</span>
             <span className="text-2xl font-bold text-primary">${totalPrice.toFixed(2)}</span>
           </div>
-          <Button
-            onClick={() => {
-              console.log("Botón 'Realizar Pedido' clickeado.")
-              handlePlaceOrder()
-            }}
-            className="w-full"
-            disabled={cartItems.length === 0}
-          >
+          <Button onClick={handlePlaceOrder} className="w-full" disabled={cartItems.length === 0}>
             Realizar Pedido
           </Button>
         </SheetFooter>
