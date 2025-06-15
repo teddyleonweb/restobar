@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MinusCircle, PlusCircle, Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-import { ApiClient } from "@/lib/api-client"
+import { ApiClient } from "@/lib/api-client" // Importar ApiClient
 
 // Define el tipo para un ítem en el carrito (debe coincidir con el de page.tsx)
 interface CartItem {
@@ -14,6 +14,7 @@ interface CartItem {
   price: number
   quantity: number
   image_url?: string | null
+  item_notes?: string // NUEVO: Notas por ítem
 }
 
 interface CartSheetProps {
@@ -25,10 +26,12 @@ interface CartSheetProps {
   totalPrice: number
   restaurantId: number
   tableId: number
-  onOrderPlaced: () => void // Nueva prop para limpiar el carrito
+  customerFirstName: string // NUEVO
+  customerLastName: string // NUEVO
+  setCart: (items: CartItem[]) => void // NUEVO: Prop para limpiar el carrito
 }
 
-export function CartSheet({
+export default function CartSheet({
   isOpen,
   onClose,
   cartItems,
@@ -37,7 +40,9 @@ export function CartSheet({
   totalPrice,
   restaurantId,
   tableId,
-  onOrderPlaced,
+  customerFirstName, // NUEVO
+  customerLastName, // NUEVO
+  setCart, // NUEVO
 }: CartSheetProps) {
   const handlePlaceOrder = async () => {
     if (cartItems.length === 0) {
@@ -49,32 +54,43 @@ export function CartSheet({
       return
     }
 
+    if (!customerFirstName || !customerLastName) {
+      toast({
+        title: "Información del Cliente Requerida",
+        description: "Por favor, ingresa tu nombre y apellido para realizar el pedido.",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       const orderData = {
         restaurant_id: restaurantId,
         table_id: tableId,
+        customer_first_name: customerFirstName, // NUEVO
+        customer_last_name: customerLastName, // NUEVO
         items: cartItems.map((item) => ({
           menu_item_id: item.id,
           quantity: item.quantity,
-          // price_at_order no es necesario aquí, la API lo calcula
+          item_notes: item.item_notes || null, // NUEVO: Enviar notas del ítem
         })),
-        total_amount: totalPrice, // Esto es solo para referencia, la API lo recalcula
-        // Otros campos como customer_notes si los añades
+        total_amount: totalPrice,
+        // Otros campos como notas generales del cliente (customer_notes) si se añaden
       }
-
       const response = await ApiClient.placeOrder(orderData)
 
       if (response.success) {
         toast({
           title: "Pedido Realizado",
-          description: `Tu pedido #${response.data?.order_id} ha sido enviado exitosamente.`,
+          description: "Tu pedido ha sido enviado exitosamente.",
         })
-        onOrderPlaced() // Limpiar el carrito en el componente padre
+        // Limpiar carrito y cerrar sheet
+        setCart([]) // Asumiendo que setCart es accesible o se pasa un callback para limpiar
         onClose()
       } else {
         toast({
           title: "Error al realizar pedido",
-          description: response.error || "Ocurrió un error desconocido al enviar el pedido.",
+          description: response.error || "Ocurrió un error desconocido.",
           variant: "destructive",
         })
       }
@@ -82,7 +98,7 @@ export function CartSheet({
       console.error("Error placing order:", error)
       toast({
         title: "Error de conexión",
-        description: `No se pudo conectar con el servidor para realizar el pedido: ${error.message}`,
+        description: error.message || "No se pudo conectar con el servidor para realizar el pedido.",
         variant: "destructive",
       })
     }
@@ -121,6 +137,9 @@ export function CartSheet({
                   <div className="flex-grow">
                     <h4 className="font-semibold text-base">{item.name}</h4>
                     <p className="text-sm text-gray-600">${item.price.toFixed(2)} c/u</p>
+                    {item.item_notes && ( // Mostrar notas del ítem si existen
+                      <p className="text-xs text-gray-500 italic">Nota: {item.item_notes}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

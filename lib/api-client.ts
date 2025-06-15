@@ -95,11 +95,27 @@ export interface Table {
   updatedAt?: string
 }
 
+// Add the new Order interface near other interfaces like Table
+// NUEVA INTERFACE: Order
+export interface Order {
+  id: number
+  restaurant_id: number
+  table_id: number
+  table_number?: string // To be populated by the backend or joined
+  total_amount: number
+  status: "pending" | "processing" | "completed" | "cancelled"
+  customer_first_name?: string | null // NUEVO
+  customer_last_name?: string | null // NUEVO
+  customer_notes?: string | null
+  created_at: string
+  updated_at?: string
+}
+
 // NUEVA INTERFACE: OrderItem para el envío del pedido
 export interface OrderItemPayload {
   menu_item_id: number
   quantity: number
-  item_notes?: string
+  item_notes?: string // NUEVO
 }
 
 // NUEVA INTERFACE: PlaceOrderResponse
@@ -586,6 +602,8 @@ export class ApiClient {
   static async placeOrder(orderData: {
     restaurant_id: number
     table_id: number
+    customer_first_name?: string // NUEVO
+    customer_last_name?: string // NUEVO
     items: OrderItemPayload[]
     customer_notes?: string
   }): Promise<ApiResponse<PlaceOrderResponse>> {
@@ -594,6 +612,18 @@ export class ApiClient {
       headers: { "Content-Type": "application/json" }, // No auth needed for public endpoint
       mode: "cors",
       body: JSON.stringify(orderData),
+    })
+    return this.handleResponse(response)
+  }
+
+  // Add the new getOrders method in the ApiClient class
+  // NUEVO MÉTODO: Obtener órdenes
+  static async getOrders(restaurantId: number): Promise<ApiResponse<{ orders: Order[]; total_orders: number }>> {
+    const response = await fetch(getApiUrl("GET_ORDERS") + `&restaurant_id=${restaurantId}`, {
+      method: "GET",
+      headers: this.getAuthHeaders(),
+      mode: "cors",
+      cache: "no-store",
     })
     return this.handleResponse(response)
   }

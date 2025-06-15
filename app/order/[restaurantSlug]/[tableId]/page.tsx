@@ -8,16 +8,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import MenuItemCard from "@/components/menu/menu-item-card"
 import CategoryTabs from "@/components/menu/category-tabs"
-import { ShoppingCart } from "lucide-react"
-import { CartSheet } from "@/components/menu/cart-sheet"
+import CartSheet from "@/components/menu/cart-sheet" // Importar CartSheet
+import { Button } from "@/components/ui/button" // Importar Button
+import { ShoppingCart } from "lucide-react" // Importar ShoppingCart icon
+import { Input } from "@/components/ui/input" // Importar Input
+import { Label } from "@/components/ui/label" // Importar Label
 
-// Definir el tipo CartItem (debe coincidir con el de CartSheet.tsx)
+// Define el tipo para un ítem en el carrito (debe coincidir con el de CartSheet)
 interface CartItem {
   id: number
   name: string
   price: number
   quantity: number
   image_url?: string | null
+  item_notes?: string // NUEVO: Notas por ítem
 }
 
 export default function OrderPage() {
@@ -34,20 +38,61 @@ export default function OrderPage() {
   const [apiTestResult, setApiTestResult] = useState<string | null>(null)
   const [isTestingApi, setIsTestingApi] = useState(false)
 
-  // Añadir los estados para el carrito
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<CartItem[]>([])
   const [isCartOpen, setIsCartOpen] = useState(false)
 
-  // Simulación de obtención de restaurantId a partir del slug
-  // En un entorno real, necesitarías una API para obtener el ID del restaurante por su slug.
-  // Por ahora, usaremos un ID fijo o una lógica de mapeo simple.
+  // NUEVOS ESTADOS PARA DATOS DEL CLIENTE
+  const [customerFirstName, setCustomerFirstName] = useState<string>("")
+  const [customerLastName, setCustomerLastName] = useState<string>("")
+
+  const addToCart = (item: MenuItem, quantity: number, item_notes?: string) => {
+    setCart((prevCart) => {
+      const existingItemIndex = prevCart.findIndex((cartItem) => cartItem.id === item.id)
+
+      if (existingItemIndex > -1) {
+        const updatedCart = [...prevCart]
+        updatedCart[existingItemIndex].quantity += quantity
+        // Actualizar notas si se añade el mismo ítem de nuevo con una nota diferente
+        if (item_notes) {
+          updatedCart[existingItemIndex].item_notes = item_notes
+        }
+        return updatedCart
+      } else {
+        return [...prevCart, { ...item, quantity, item_notes }]
+      }
+    })
+    toast({
+      title: "Añadido al carrito",
+      description: `${quantity} x ${item.name} ha sido añadido.`,
+    })
+  }
+
+  const updateCartQuantity = (itemId: number, quantity: number) => {
+    setCart((prevCart) => {
+      const updatedCart = prevCart
+        .map((item) => (item.id === itemId ? { ...item, quantity: quantity } : item))
+        .filter((item) => item.quantity > 0) // Eliminar si la cantidad es 0 o menos
+      return updatedCart
+    })
+  }
+
+  const removeCartItem = (itemId: number) => {
+    setCart((prevCart) => prevCart.filter((item) => item.id !== itemId))
+    toast({
+      title: "Eliminado del carrito",
+      description: "El ítem ha sido eliminado de tu carrito.",
+    })
+  }
+
+  const totalPrice = useMemo(() => {
+    return cart.reduce((total, item) => total + item.price * item.quantity, 0)
+  }, [cart])
 
   const handleTestApi = async () => {
     setIsTestingApi(true)
     setApiTestResult(null)
     try {
-      // Use a hardcoded slug for testing, or the current restaurantSlug if available
-      const testSlug = restaurantSlug || "your-default-test-slug" // Replace "your-default-test-slug" with a known slug from your database for testing
+      const testSlug = restaurantSlug || "your-default-test-slug"
       const response = await ApiClient.getRestaurantBySlug(testSlug)
       if (response.success) {
         setApiTestResult("API Test SUCCESS: " + JSON.stringify(response.data, null, 2))
@@ -95,7 +140,7 @@ export default function OrderPage() {
     }
 
     fetchMenuData()
-  }, [restaurantSlug]) // Dependencia solo del slug
+  }, [restaurantSlug])
 
   const filteredMenuItems = useMemo(() => {
     if (activeTab === "all") {
@@ -110,51 +155,6 @@ export default function OrderPage() {
     // Filter by category ID
     return menuItems.filter((item) => item.category_id?.toString() === activeTab)
   }, [menuItems, activeTab])
-
-  // Función para añadir un ítem al carrito
-  const addToCart = (item: MenuItem) => {
-    setCartItems((prevItems) => {
-      const existingItem = prevItems.find((cartItem) => cartItem.id === item.id)
-      if (existingItem) {
-        return prevItems.map((cartItem) =>
-          cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem,
-        )
-      } else {
-        return [
-          ...prevItems,
-          { id: item.id, name: item.name, price: item.price, quantity: 1, image_url: item.image_url },
-        ]
-      }
-    })
-    toast({
-      title: "Añadido al carrito",
-      description: `${item.name} ha sido añadido.`,
-    })
-  }
-
-  // Función para actualizar la cantidad de un ítem en el carrito
-  const updateCartQuantity = (itemId: number, quantity: number) => {
-    setCartItems((prevItems) => {
-      if (quantity <= 0) {
-        return prevItems.filter((item) => item.id !== itemId)
-      }
-      return prevItems.map((item) => (item.id === itemId ? { ...item, quantity: quantity } : item))
-    })
-  }
-
-  // Función para eliminar un ítem del carrito
-  const removeCartItem = (itemId: number) => {
-    setCartItems((prevItems) => prevItems.filter((item) => item.id !== itemId))
-    toast({
-      title: "Eliminado del carrito",
-      description: "El ítem ha sido eliminado del carrito.",
-    })
-  }
-
-  // Calcular el precio total del carrito
-  const totalPrice = useMemo(() => {
-    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
-  }, [cartItems])
 
   if (loading) {
     return (
@@ -213,26 +213,57 @@ export default function OrderPage() {
               <p className="text-sm text-gray-600">Mesa: {tableId}</p>
             </div>
           </div>
-          {/* Eliminar el botón del carrito aquí */}
-          <button
+          {/* Botón del carrito */}
+          <Button
+            variant="outline"
+            size="lg"
+            className="relative"
             onClick={() => setIsCartOpen(true)}
-            className="relative p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
-            aria-label="Ver carrito"
+            aria-label={`Ver carrito con ${cart.length} ítems`}
           >
-            <ShoppingCart className="h-6 w-6" />
-            {cartItems.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                {cartItems.length}
+            <ShoppingCart className="h-5 w-5" />
+            {cart.length > 0 && (
+              <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                {cart.length}
               </span>
             )}
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* Contenido del Menú */}
       <main className="max-w-4xl mx-auto p-4 pb-20">
-        {" "}
-        {/* Added pb-20 for cart button space */}
+        {/* Campos de nombre y apellido del cliente */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-center font-playfair">Tus Datos</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="customerFirstName">Nombre</Label>
+              <Input
+                id="customerFirstName"
+                type="text"
+                placeholder="Tu nombre"
+                value={customerFirstName}
+                onChange={(e) => setCustomerFirstName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customerLastName">Apellido</Label>
+              <Input
+                id="customerLastName"
+                type="text"
+                placeholder="Tu apellido"
+                value={customerLastName}
+                onChange={(e) => setCustomerLastName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-center font-playfair">Nuestro Menú</CardTitle>
@@ -240,12 +271,12 @@ export default function OrderPage() {
           <CardContent>
             <CategoryTabs categories={categories} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-            <ScrollArea className="h-[calc(100vh-250px)] mt-4 pr-4">
+            <ScrollArea className="h-[calc(100vh-400px)] mt-4 pr-4">
               {" "}
-              {/* Adjust height based on header/tabs */}
+              {/* Adjusted height for customer info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredMenuItems.length > 0 ? (
-                  filteredMenuItems.map((item) => <MenuItemCard key={item.id} item={item} onAddToCart={addToCart} />) // Eliminar onAddToCart={addToCart}
+                  filteredMenuItems.map((item) => <MenuItemCard key={item.id} item={item} onAddToCart={addToCart} />)
                 ) : (
                   <p className="col-span-full text-center text-gray-500">No hay ítems en esta categoría.</p>
                 )}
@@ -254,16 +285,18 @@ export default function OrderPage() {
           </CardContent>
         </Card>
       </main>
+
       <CartSheet
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        cartItems={cartItems}
+        cartItems={cart}
         onUpdateQuantity={updateCartQuantity}
         onRemoveItem={removeCartItem}
         totalPrice={totalPrice}
-        restaurantId={restaurant?.id || 0} // Asegúrate de pasar el ID del restaurante
-        tableId={Number.parseInt(tableId)} // Asegúrate de pasar el ID de la mesa
-        onOrderPlaced={() => setCartItems([])} // Limpiar el carrito al realizar el pedido
+        restaurantId={restaurant?.id || 0}
+        tableId={Number.parseInt(tableId)}
+        customerFirstName={customerFirstName} // Pasar nombre
+        customerLastName={customerLastName} // Pasar apellido
       />
     </div>
   )

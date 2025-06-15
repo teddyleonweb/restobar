@@ -4,12 +4,26 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { LogOut, Plus, MapPin, Phone, Mail, Calendar, Store, User, Settings, X, QrCode } from "lucide-react" // NUEVO: Importar QrCode
+import {
+  LogOut,
+  Plus,
+  MapPin,
+  Phone,
+  Mail,
+  Calendar,
+  Store,
+  User,
+  Settings,
+  X,
+  QrCode,
+  ShoppingCart,
+} from "lucide-react" // NUEVO: Importar QrCode
 import ImageUpload from "@/components/image-upload"
 import RestaurantImageGallery from "@/components/restaurant-image-gallery"
 import RestaurantMenuGallery from "@/components/restaurant-menu-gallery"
 import MenuAndCategoryManager from "@/components/menu-and-category-manager"
 import TableManager from "@/components/table-manager" // NUEVO: Importar TableManager
+import OrderManager from "@/components/order-manager" // NUEVO: Importar OrderManager
 
 // Add this import at the top of the file
 import { toast } from "@/hooks/use-toast"
@@ -102,6 +116,10 @@ export default function Dashboard() {
 
   // NUEVO: Estado para el modal de gestión de mesas
   const [showTableManager, setShowTableManager] = useState(false)
+
+  // Add new state variables near other state variables
+  // NUEVO: Estado para el modal de gestión de órdenes
+  const [showOrderManager, setShowOrderManager] = useState(false)
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null)
@@ -394,6 +412,13 @@ export default function Dashboard() {
     setShowTableManager(true)
   }
 
+  // Add a new function to open the OrderManager modal near other open functions
+  // NUEVO: Función para abrir el modal de gestión de órdenes
+  const openOrderManager = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant)
+    setShowOrderManager(true)
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -636,6 +661,14 @@ export default function Dashboard() {
                             className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
                           >
                             <QrCode className="h-4 w-4 mr-2 inline-block" /> Gestionar Mesas y QR
+                          </button>
+                          {/* Add a new button in the restaurant card actions, similar to other management buttons */}
+                          {/* NUEVO BOTÓN: Gestionar Órdenes */}
+                          <button
+                            onClick={() => openOrderManager(restaurant)}
+                            className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg transition-colors text-sm"
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-2 inline-block" /> Gestionar Órdenes
                           </button>
                           <button
                             onClick={() => openDeleteConfirm(restaurant)}
@@ -954,6 +987,11 @@ export default function Dashboard() {
             restaurantSlug={selectedRestaurant.slug} // Pasa el slug del restaurante
             onClose={() => setShowTableManager(false)}
           />
+        )}
+
+        {/* NUEVO: OrderManager Modal */}
+        {showOrderManager && selectedRestaurant && (
+          <OrderManager restaurantId={selectedRestaurant.id} onClose={() => setShowOrderManager(false)} />
         )}
 
         {/* Modal de confirmación de eliminación */}

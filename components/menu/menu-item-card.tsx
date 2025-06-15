@@ -1,69 +1,83 @@
 "use client"
 
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea" // Importar Textarea
 import type { MenuItem } from "@/lib/api-client"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { formatCurrency } from "@/lib/utils"
-import { Button } from "@/components/ui/button" // Importar `Button` de "@/components/ui/button".
+import { PlusCircle } from "lucide-react"
+import { useState } from "react"
 
-// Importar el componente `Image` de `next/image`
-import Image from "next/image"
-
-// Modificar la interfaz `MenuItemCardProps` para incluir `onAddToCart`:
 interface MenuItemCardProps {
   item: MenuItem
-  onAddToCart: (item: MenuItem) => void // Reintroducir esta prop
+  onAddToCart: (item: MenuItem, quantity: number, item_notes?: string) => void // Añadir item_notes
 }
 
-// Modificar la declaración del componente `MenuItemCard` para aceptar `onAddToCart`:
 export default function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
-  return (
-    // Modificar el componente `Card` para que tenga `overflow-hidden`
-    <Card className="bg-secondary text-secondary-foreground overflow-hidden">
-      {/* Añadir el bloque de la imagen justo después de la etiqueta `<Card>` de apertura */}
-      {item.image_url && (
-        <div className="relative w-full h-48">
-          <Image
-            src={item.image_url || "/placeholder.svg"}
-            alt={item.name}
-            layout="fill"
-            objectFit="cover"
-            className="rounded-t-lg"
-            priority={false}
-            loading="lazy"
-            placeholder="blur"
-            blurDataURL="/placeholder.svg?height=100&width=100"
-          />
-        </div>
-      )}
+  const [quantity, setQuantity] = useState(1)
+  const [itemNotes, setItemNotes] = useState("") // Nuevo estado para notas del ítem
 
-      {/* Ajustar el `CardHeader` y `CardContent` para el padding y el tamaño de fuente */}
-      <CardHeader className="p-4 pb-2">
+  const handleAddToCart = () => {
+    if (quantity > 0) {
+      onAddToCart(item, quantity, itemNotes) // Pasar las notas
+      setQuantity(1) // Resetear cantidad
+      setItemNotes("") // Resetear notas
+    }
+  }
+
+  const displayPrice = item.discount_percentage
+    ? (item.price * (1 - item.discount_percentage / 100)).toFixed(2)
+    : item.price.toFixed(2)
+
+  return (
+    <Card className="flex flex-col overflow-hidden">
+      {item.image_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.image_url || "/placeholder.svg"} alt={item.name} className="h-48 w-full object-cover" />
+      )}
+      <CardHeader>
         <CardTitle className="text-lg font-semibold">{item.name}</CardTitle>
-        <CardDescription className="text-sm text-secondary-foreground/80">{item.description}</CardDescription>
+        <p className="text-sm text-gray-600">{item.description}</p>
       </CardHeader>
-      <CardContent className="p-4 pt-0 grid gap-2">
+      <CardContent className="flex-grow">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h4 className="text-base font-bold">Precio:</h4>
-            <p className="text-base">{formatCurrency(item.price)}</p>
-          </div>
-          {item.is_available ? (
-            <Badge variant="outline" className="bg-green-100 text-green-800">
-              Disponible
-            </Badge>
-          ) : (
-            <Badge variant="destructive" className="bg-red-100 text-red-800">
-              No Disponible
-            </Badge>
+          <span className="text-xl font-bold text-primary">${displayPrice}</span>
+          {item.discount_percentage && (
+            <span className="ml-2 text-sm text-gray-500 line-through">${item.price.toFixed(2)}</span>
           )}
         </div>
+        {item.discount_percentage && (
+          <p className="text-xs text-green-600">
+            {item.discount_percentage}% de descuento hasta {item.discount_end_date}
+          </p>
+        )}
       </CardContent>
-      <CardFooter className="flex justify-between p-4 pt-0">
-        {/* Dentro de `CardFooter`, reintroducir el botón "Añadir al Carrito": */}
-        <Button onClick={() => onAddToCart(item)} className="w-full">
-          Añadir al Carrito
-        </Button>
+      <CardFooter className="flex flex-col gap-2">
+        <div className="w-full">
+          <Label htmlFor={`notes-${item.id}`}>Notas para el ítem</Label>
+          <Textarea
+            id={`notes-${item.id}`}
+            placeholder="Ej: poca salsa, sin cebolla..."
+            value={itemNotes}
+            onChange={(e) => setItemNotes(e.target.value)}
+            className="w-full resize-none"
+            rows={2}
+          />
+        </div>
+        <div className="flex w-full items-center gap-2">
+          <Input
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 1)}
+            className="w-20"
+          />
+          <Button onClick={handleAddToCart} className="flex-grow">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Añadir
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   )

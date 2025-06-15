@@ -32,6 +32,7 @@ export const API_CONFIG = {
     GET_RESTAURANT_BY_SLUG: "/api.php?action=get-restaurant-by-slug",
     GET_TABLE_BY_ID: "/api.php?action=get-table-by-id", // Aseguramos que este endpoint esté presente
     PLACE_ORDER: "/api.php?action=place-order", // Aseguramos que este endpoint esté presente
+    GET_ORDERS: "/api.php?action=get-orders",
   },
 } as const
 
