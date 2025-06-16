@@ -10,6 +10,7 @@ import { X, Loader2, RefreshCw, Eye } from "lucide-react" // Import Eye icon
 import { ApiClient, type Order, type OrderItem } from "@/lib/api-client" // Import OrderItem
 import { toast } from "@/hooks/use-toast"
 import { ScrollArea } from "@/components/ui/scroll-area" // Import ScrollArea
+import ResponsiveImage from "@/components/responsive-image" // Import ResponsiveImage
 
 interface OrderManagerProps {
   restaurantId: number
@@ -222,14 +223,23 @@ export default function OrderManager({ restaurantId, onClose }: OrderManagerProp
               {selectedOrder.items && selectedOrder.items.length > 0 ? (
                 <div className="space-y-4">
                   {selectedOrder.items.map((item: OrderItem, index: number) => (
-                    <div key={index} className="border-b pb-3 last:border-b-0">
-                      <div className="flex justify-between items-center">
-                        <p className="font-medium">
-                          {item.menu_item_name} (x{item.quantity})
+                    <div key={index} className="flex items-center gap-4 border-b pb-3 last:border-b-0">
+                      <ResponsiveImage
+                        src={item.image_url || "/placeholder.svg?height=64&width=64&text=No+Image"}
+                        alt={item.menu_item_name || "Product image"}
+                        width={64}
+                        height={64}
+                        className="rounded-md object-cover"
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">
+                          {item.quantity}x {item.menu_item_name}
                         </p>
-                        <p className="font-semibold">${(item.price_at_order * item.quantity).toFixed(2)}</p>
+                        {item.item_notes && (
+                          <p className="text-xs text-gray-500 italic mt-1">Notas: {item.item_notes}</p>
+                        )}
                       </div>
-                      {item.item_notes && <p className="text-sm text-gray-600 italic mt-1">Notas: {item.item_notes}</p>}
+                      <p className="font-semibold text-gray-900">${(item.price_at_order * item.quantity).toFixed(2)}</p>
                     </div>
                   ))}
                 </div>

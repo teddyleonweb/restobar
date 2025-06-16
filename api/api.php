@@ -856,7 +856,7 @@ switch ($action) {
           $restaurant_id
       ));
 
-      $restaurant_menus = array_map(function($menu) {
+      $restaurant->menus = array_map(function($menu) {
           return [
               'id' => (int) $menu->id,
               'title' => $menu->title,
@@ -881,7 +881,7 @@ switch ($action) {
           $restaurant_id
       ));
 
-      $restaurant_tables = array_map(function($table) {
+      $restaurant->tables = array_map(function($table) {
           return [
               'id' => (int) $table->id,
               'tableNumber' => $table->table_number,
@@ -3201,6 +3201,10 @@ case 'get-orders':
       send_error('Método no permitido', 405);
   }
 
+  // Habilitar errores para depuración en el log de PHP
+  ini_set('display_errors', 1);
+  error_reporting(E_ALL);
+
   // Verificar autenticación
   $user_data = verify_token($token);
   if (!$user_data) {
@@ -3236,26 +3240,34 @@ case 'get-orders':
       $restaurant_id
   ));
 
+  error_log("DEBUG: get-orders - Total orders fetched: " . count($orders));
+
   // Loop through orders to fetch their items
   foreach ($orders as &$order) {
-      $order_items = $wpdb->get_results($wpdb->prepare(
-          "SELECT oi.*, mi.name as menu_item_name
+      $order_items_query = $wpdb->prepare(
+          "SELECT oi.*, mi.name as menu_item_name, mi.image_url as menu_item_image_url
            FROM kvq_tubarresto_order_items oi
            JOIN kvq_tubarresto_menu_items mi ON oi.menu_item_id = mi.id
            WHERE oi.order_id = %d
            ORDER BY oi.id ASC",
           $order->id
-      ));
+      );
+      error_log("DEBUG: get-orders - Query for order items (Order ID: {$order->id}): " . $order_items_query);
+
+      $order_items = $wpdb->get_results($order_items_query);
+      error_log("DEBUG: get-orders - Raw order items for Order ID {$order->id}: " . print_r($order_items, true));
 
       $order->items = array_map(function($item) {
           return [
               'menu_item_id' => (int) $item->menu_item_id,
               'menu_item_name' => $item->menu_item_name, // Add item name
               'quantity' => (int) $item->quantity,
-              'price_at_order' => (float) $item->price_at_order,
-              'item_notes' => $item->item_notes // Add item notes
+              'price_at_order' => (float) $item->price_at_at_order,
+              'item_notes' => $item->item_notes, // Add item notes
+              'image_url' => $item->menu_item_image_url // AÑADIDO: URL de la imagen del producto
           ];
       }, $order_items);
+      error_log("DEBUG: get-orders - Processed items for Order ID {$order->id}: " . print_r($order->items, true));
   }
 
   header("Cache-Control: no-cache, no-store, must-revalidate");

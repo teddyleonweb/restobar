@@ -103,6 +103,7 @@ export interface OrderItem {
   quantity: number
   price_at_order: number
   item_notes?: string | null
+  image_url?: string | null // AÑADIDO: URL de la imagen del producto
 }
 
 export interface Order {
