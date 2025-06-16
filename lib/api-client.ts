@@ -149,21 +149,23 @@ export class ApiClient {
     const contentType = response.headers.get("content-type")
     const isJson = contentType && contentType.includes("application/json")
 
+    // Read the response body as text once
+    const responseText = await response.text()
+
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error("API Error Response (Not OK):", errorText)
+      console.error("API Error Response (Not OK):", responseText)
 
       if (isJson) {
         try {
-          const errorData = JSON.parse(errorText)
+          const errorData = JSON.parse(responseText)
           throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
         } catch (parseError) {
           // Fallback if error response is supposed to be JSON but is malformed
-          throw new Error(`HTTP ${response.status}: ${response.statusText} - Malformed error JSON: ${errorText}`)
+          throw new Error(`HTTP ${response.status}: ${response.statusText} - Malformed error JSON: ${responseText}`)
         }
       } else {
         // If not JSON, just use the status text or the raw text
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText || "Unknown error"}`)
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText || "Unknown error"}`)
       }
     }
 
@@ -175,20 +177,18 @@ export class ApiClient {
 
     if (isJson) {
       try {
-        const result = await response.json()
+        const result = JSON.parse(responseText)
         return result
       } catch (parseError) {
-        const rawText = await response.text()
-        console.error("API Error: Failed to parse JSON for OK response:", rawText, parseError)
-        throw new Error(`Failed to parse JSON response: ${rawText.substring(0, 100)}...`)
+        console.error("API Error: Failed to parse JSON for OK response:", responseText, parseError)
+        throw new Error(`Failed to parse JSON response: ${responseText.substring(0, 100)}...`)
       }
     } else {
-      const rawText = await response.text()
-      console.warn("API Warning: Expected JSON but received non-JSON content for OK response:", rawText)
+      console.warn("API Warning: Expected JSON but received non-JSON content for OK response:", responseText)
       // If it's not JSON but the status is OK, we can assume success but no data
       return {
         success: true,
-        data: rawText as any,
+        data: responseText as any,
         message: "Operation successful, non-JSON content returned.",
       } as ApiResponse<T>
     }

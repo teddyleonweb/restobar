@@ -3262,7 +3262,7 @@ case 'get-orders':
               'menu_item_id' => (int) $item->menu_item_id,
               'menu_item_name' => $item->menu_item_name, // Add item name
               'quantity' => (int) $item->quantity,
-              'price_at_order' => (float) $item->price_at_at_order,
+              'price_at_order' => (float) $item->price_at_order,
               'item_notes' => $item->item_notes, // Add item notes
               'image_url' => $item->menu_item_image_url // AÑADIDO: URL de la imagen del producto
           ];
