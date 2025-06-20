@@ -2941,6 +2941,50 @@ case 'update-menu-category':
     ]);
     break;
 
+// --- NUEVO ENDPOINT: OBTENER MESA POR ID (PÚBLICO) ---
+case 'get-table-by-id':
+    if ($method !== 'GET') {
+        send_error('Método no permitido', 405);
+    }
+
+    $table_id = isset($_GET['table_id']) ? (int)$_GET['table_id'] : 0;
+    
+    if (!$table_id || $table_id <= 0) {
+        send_error('ID de mesa inválido o faltante.');
+    }
+
+    global $wpdb;
+
+    // Obtener mesa por ID
+    $table = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM kvq_tubarresto_tables WHERE id = %d AND is_active = 1",
+        $table_id
+    ));
+
+    if (!$table) {
+        send_error('Mesa no encontrada o inactiva', 404);
+    }
+    
+    header("Cache-Control: no-cache, no-store, must-revalidate");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+    send_success([
+        'table' => [
+            'id' => (int) $table->id,
+            'restaurantId' => (int) $table->restaurant_id,
+            'tableNumber' => $table->table_number,
+            'capacity' => (int) $table->capacity,
+            'locationDescription' => $table->location_description,
+            'qrCodeData' => $table->qr_code_data,
+            'qrCodeUrl' => $table->qr_code_url,
+            'isActive' => (bool) $table->is_active,
+            'createdAt' => $table->created_at,
+            'updatedAt' => $table->updated_at
+        ]
+    ]);
+    break;
+// --- FIN NUEVO ENDPOINT: OBTENER MESA POR ID (PÚBLICO) ---
+
 // --- NUEVO ENDPOINT: OBTENER RESTAURANTE Y MENÚ POR SLUG (PÚBLICO) ---
 case 'get-restaurant-by-slug':
     if ($method !== 'GET') {
