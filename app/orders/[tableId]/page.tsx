@@ -43,7 +43,7 @@ export default function TableOrdersPage() {
     setError(null)
     try {
       // First, get restaurant details to display its name
-      const tableResponse = await ApiClient.getTableById(tableId, false) // Pasar false para no requerir autenticación
+      const tableResponse = await ApiClient.getTableById(tableId)
       if (!tableResponse.success || !tableResponse.data?.table) {
         throw new Error(tableResponse.error || "Mesa no encontrada.")
       }
@@ -57,7 +57,7 @@ export default function TableOrdersPage() {
       }
 
       // Then, fetch orders for this table
-      const ordersResponse = await ApiClient.getOrders(restaurantId, tableId, ["pending", "processing"], false) // Pasar false para no requerir autenticación y filtrar por estados
+      const ordersResponse = await ApiClient.getOrders(restaurantId, tableId)
       if (ordersResponse.success && ordersResponse.data) {
         // Filter for pending and processing orders
         const activeOrders = ordersResponse.data.orders.filter(

@@ -598,11 +598,9 @@ export class ApiClient {
   }
 
   // NUEVO MÉTODO: Obtener mesa por ID (PÚBLICO)
-  static async getTableById(tableId: number, requireAuth = true): Promise<ApiResponse<{ table: Table }>> {
-    const headers = requireAuth ? this.getAuthHeaders() : { "Content-Type": "application/json" }
+  static async getTableById(tableId: number): Promise<ApiResponse<{ table: Table }>> {
     const response = await fetch(getApiUrl("GET_TABLE_BY_ID") + `&table_id=${tableId}`, {
       method: "GET",
-      headers: headers, // Usar los nuevos headers
       mode: "cors",
       cache: "no-store",
     })
@@ -632,20 +630,14 @@ export class ApiClient {
   static async getOrders(
     restaurantId: number,
     tableId?: number,
-    status?: Order["status"][],
-    requireAuth = true, // Añadir este parámetro
   ): Promise<ApiResponse<{ orders: Order[]; total_orders: number }>> {
     let url = getApiUrl("GET_ORDERS") + `&restaurant_id=${restaurantId}`
     if (tableId) {
       url += `&table_id=${tableId}`
     }
-    if (status && status.length > 0) {
-      url += `&status=${status.join(",")}`
-    }
-    const headers = requireAuth ? this.getAuthHeaders() : { "Content-Type": "application/json" } // Usar headers condicionales
     const response = await fetch(url, {
       method: "GET",
-      headers: headers, // Usar los nuevos headers
+      headers: this.getAuthHeaders(),
       mode: "cors",
       cache: "no-store",
     })
