@@ -141,7 +141,10 @@ export default function TableOrdersPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("es-ES", {
+    return new Date(dateString).toLocaleString("es-ES", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -176,20 +179,27 @@ export default function TableOrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <header className="bg-white shadow-sm p-4 mb-6 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
-        </div>
-        {restaurantDetailsResponse?.data?.restaurant?.logo_url && (
-          <div className="flex-shrink-0 ml-auto">
-            <Image
-              src={restaurantDetailsResponse.data.restaurant.logo_url || "/placeholder.svg"}
-              alt={`${restaurantName} Logo`}
-              width={80} // Ajusta el tamaño según sea necesario
-              height={80} // Ajusta el tamaño según sea necesario
-              className="rounded-full object-cover"
-            />
+        <div className="flex items-center gap-4">
+          {" "}
+          {/* Contenedor para logo y título */}
+          {restaurantDetailsResponse?.data?.restaurant?.logo_url && (
+            <div className="flex-shrink-0">
+              <Image
+                src={restaurantDetailsResponse.data.restaurant.logo_url || "/placeholder.svg"}
+                alt={`${restaurantName} Logo`}
+                width={80} // Ajusta el tamaño según sea necesario
+                height={80} // Ajusta el tamaño según sea necesario
+                className="rounded-full object-cover"
+              />
+            </div>
+          )}
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
+            <p className="text-2xl text-gray-800 mt-1">
+              Mesa: <span className="font-extrabold text-red-600">{tableIdFromUrl}</span>
+            </p>
           </div>
-        )}
+        </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
           {/* Filtro por Mesa */}
           <Select value={selectedTableFilter} onValueChange={setSelectedTableFilter}>
@@ -254,13 +264,13 @@ export default function TableOrdersPage() {
                             : "Cancelado"}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Mesa: <span className="font-semibold">{order.table_number}</span>
+                  <p className="text-lg text-gray-800 mt-1">
+                    Mesa: <span className="font-extrabold text-red-600">{order.table_number}</span>
                   </p>
                   <p className="text-sm text-gray-600">
                     Cliente: {order.customer_first_name} {order.customer_last_name}
                   </p>
-                  <p className="text-sm text-gray-600">Hora: {formatDate(order.created_at)}</p>
+                  <p className="text-sm text-gray-600">Fecha y Hora: {formatDate(order.created_at)}</p>
                 </CardHeader>
                 <CardContent className="pt-3">
                   <h3 className="text-md font-semibold mb-2">Productos:</h3>
