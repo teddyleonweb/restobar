@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
-import { ApiClient, type Order } from "@/lib/api-client"
+import { ApiClient, type Order, type Table } from "@/lib/api-client" // Import Table type
 import { toast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, RefreshCw } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // Import Select components
+import { Button } from "@/components/ui/button" // Import Button for the refresh button
 
 // Custom hook for setting up an interval
 function useInterval(callback: () => void, delay: number | null) {
@@ -31,43 +33,64 @@ function useInterval(callback: () => void, delay: number | null) {
 
 export default function TableOrdersPage() {
   const params = useParams()
-  const tableId = Number.parseInt(params.tableId as string)
+  const tableIdFromUrl = Number.parseInt(params.tableId as string) // Renombrado para claridad
 
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [restaurantName, setRestaurantName] = useState<string>("Cargando Restaurante...")
+  const [restaurantId, setRestaurantId] = useState<number | null>(null) // Almacenar restaurantId
+  const [availableTables, setAvailableTables] = useState<Table[]>([]) // Almacenar todas las mesas para el filtro
+  const [selectedTableFilter, setSelectedTableFilter] = useState<string>(tableIdFromUrl.toString()) // Estado para el filtro de mesa, inicializado con la mesa de la URL
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<Order["status"] | "all">("pending") // Estado para el filtro de estado, por defecto "pending"
 
   const fetchOrders = async () => {
     setIsLoading(true)
     setError(null)
     try {
-      // First, get table details to find the restaurantId
-      const tableResponse = await ApiClient.getTableById(tableId)
-      if (!tableResponse.success || !tableResponse.data?.table) {
-        throw new Error(tableResponse.error || "Mesa no encontrada.")
-      }
-      const restaurantId = tableResponse.data.table.restaurantId
-      const restaurantSlug = tableResponse.data.table.qrCodeData.split("/")[4] // Extract slug from qrCodeData URL
+      let currentRestaurantId = restaurantId
 
-      // Then, get restaurant details to display its name
-      const restaurantDetailsResponse = await ApiClient.getRestaurantBySlug(restaurantSlug)
-      if (restaurantDetailsResponse.success && restaurantDetailsResponse.data?.restaurant) {
-        setRestaurantName(restaurantDetailsResponse.data.restaurant.name)
-      } else {
-        setRestaurantName("Restaurante Desconocido")
+      // Si restaurantId no está establecido (primera carga), obtener detalles de la mesa y el restaurante
+      if (currentRestaurantId === null) {
+        const tableResponse = await ApiClient.getTableById(tableIdFromUrl)
+        if (!tableResponse.success || !tableResponse.data?.table) {
+          throw new Error(tableResponse.error || "Mesa no encontrada.")
+        }
+        currentRestaurantId = tableResponse.data.table.restaurantId
+        setRestaurantId(currentRestaurantId) // Guardar restaurantId
+
+        const restaurantSlug = tableResponse.data.table.qrCodeData.split("/")[4] // Extraer slug de la URL de qrCodeData
+        const restaurantDetailsResponse = await ApiClient.getRestaurantBySlug(restaurantSlug)
+        if (restaurantDetailsResponse.success && restaurantDetailsResponse.data?.restaurant) {
+          setRestaurantName(restaurantDetailsResponse.data.restaurant.name)
+        } else {
+          setRestaurantName("Restaurante Desconocido")
+        }
+
+        // Obtener todas las mesas del restaurante para poblar el dropdown de filtro
+        const tablesResponse = await ApiClient.getTables(currentRestaurantId)
+        if (tablesResponse.success && tablesResponse.data) {
+          setAvailableTables(tablesResponse.data.tables)
+        } else {
+          console.warn("No se pudieron cargar las mesas para el filtro:", tablesResponse.error)
+        }
       }
 
-      // Now, fetch ALL orders for this restaurant (not just this table)
-      const ordersResponse = await ApiClient.getOrders(restaurantId) // Removed tableId parameter
+      if (currentRestaurantId === null) {
+        throw new Error("No se pudo determinar el ID del restaurante.")
+      }
+
+      // Determinar tableId a enviar a la API (si "all" está seleccionado, enviar undefined)
+      const apiTableId = selectedTableFilter === "all" ? undefined : Number(selectedTableFilter)
+      // Determinar status a enviar a la API (si "all" está seleccionado, enviar undefined)
+      const apiStatus = selectedStatusFilter === "all" ? undefined : selectedStatusFilter
+
+      // Obtener órdenes usando los filtros seleccionados
+      const ordersResponse = await ApiClient.getOrders(currentRestaurantId, apiTableId, apiStatus)
       if (ordersResponse.success && ordersResponse.data) {
-        // Filter for pending and processing orders
-        const activeOrders = ordersResponse.data.orders.filter(
-          (order) => order.status === "pending" || order.status === "processing",
-        )
-        // Sort by creation date, newest first
-        activeOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        setOrders(activeOrders)
+        // No se necesita filtrado del lado del cliente, la API lo maneja
+        ordersResponse.data.orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        setOrders(ordersResponse.data.orders)
       } else {
         setError(ordersResponse.error || "Error al cargar las órdenes.")
         toast({
@@ -89,13 +112,14 @@ export default function TableOrdersPage() {
     }
   }
 
+  // Carga inicial y recarga cuando los filtros cambian
   useEffect(() => {
-    if (tableId) {
+    if (tableIdFromUrl) {
       fetchOrders()
     }
-  }, [tableId])
+  }, [tableIdFromUrl, selectedTableFilter, selectedStatusFilter, restaurantId]) // Añadir restaurantId a las dependencias
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh cada 10 segundos
   useInterval(fetchOrders, 10000)
 
   const getStatusBadgeClass = (status: Order["status"]) => {
@@ -121,11 +145,12 @@ export default function TableOrdersPage() {
     })
   }
 
-  if (isLoading) {
+  if (isLoading && orders.length === 0) {
+    // Mostrar loader solo si no hay órdenes cargadas aún
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
         <Loader2 className="h-12 w-12 animate-spin text-red-500 mb-4" />
-        <p className="text-lg text-gray-600">Cargando órdenes para la Mesa {tableId}...</p>
+        <p className="text-lg text-gray-600">Cargando órdenes...</p>
       </div>
     )
   }
@@ -147,27 +172,60 @@ export default function TableOrdersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <header className="bg-white shadow-sm p-4 mb-6 rounded-lg flex justify-between items-center">
+      <header className="bg-white shadow-sm p-4 mb-6 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes del Restaurante {restaurantName}</h1>
+          <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
           <p className="text-xl text-gray-600">
-            Mesa de Contexto: <span className="font-semibold">{tableId}</span>
+            Mesa de Contexto: <span className="font-semibold">{tableIdFromUrl}</span>
           </p>
         </div>
-        <button
-          onClick={fetchOrders}
-          className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center"
-        >
-          <RefreshCw className="h-5 w-5 mr-2" /> Actualizar
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+          {/* Filtro por Mesa */}
+          <Select value={selectedTableFilter} onValueChange={setSelectedTableFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Filtrar por Mesa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las Mesas</SelectItem>
+              {availableTables.map((table) => (
+                <SelectItem key={table.id} value={table.id.toString()}>
+                  Mesa {table.tableNumber}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtro por Estado */}
+          <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Filtrar por Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los Estados</SelectItem>
+              <SelectItem value="pending">Pendiente</SelectItem>
+              <SelectItem value="processing">En Proceso</SelectItem>
+              <SelectItem value="completed">Completado</SelectItem>
+              <SelectItem value="cancelled">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button
+            onClick={fetchOrders}
+            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center w-full sm:w-auto"
+            disabled={isLoading} // Deshabilitar el botón mientras carga
+          >
+            {isLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <RefreshCw className="h-5 w-5 mr-2" />}
+            Actualizar
+          </Button>
+        </div>
       </header>
 
       <ScrollArea className="h-[calc(100vh-150px)]">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {orders.length === 0 ? (
+          {orders.length === 0 && !isLoading ? ( // Mostrar mensaje si no hay órdenes y no está cargando
             <div className="col-span-full text-center py-12 text-gray-500">
-              <p className="text-lg font-semibold mb-2">No hay órdenes pendientes o en proceso para esta mesa.</p>
-              <p className="text-sm">Los nuevos pedidos aparecerán aquí automáticamente.</p>
+              <p className="text-lg font-semibold mb-2">No hay órdenes que coincidan con los filtros.</p>
+              <p className="text-sm">Intenta ajustar los filtros o espera nuevos pedidos.</p>
             </div>
           ) : (
             orders.map((order) => (
@@ -180,11 +238,13 @@ export default function TableOrdersPage() {
                         ? "Pendiente"
                         : order.status === "processing"
                           ? "En Proceso"
-                          : order.status}
+                          : order.status === "completed"
+                            ? "Completado"
+                            : "Cancelado"}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600 mt-1">
-                    Mesa: <span className="font-semibold">{order.table_number}</span> {/* Added table number */}
+                    Mesa: <span className="font-semibold">{order.table_number}</span>
                   </p>
                   <p className="text-sm text-gray-600">
                     Cliente: {order.customer_first_name} {order.customer_last_name}

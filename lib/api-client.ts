@@ -630,10 +630,15 @@ export class ApiClient {
   static async getOrders(
     restaurantId: number,
     tableId?: number,
+    status?: Order["status"] | "all", // Añadir el parámetro de estado
   ): Promise<ApiResponse<{ orders: Order[]; total_orders: number }>> {
     let url = getApiUrl("GET_ORDERS") + `&restaurant_id=${restaurantId}`
     if (tableId) {
       url += `&table_id=${tableId}`
+    }
+    if (status && status !== "all") {
+      // Añadir el estado a la URL si no es "all"
+      url += `&status=${status}`
     }
     const response = await fetch(url, {
       method: "GET",
