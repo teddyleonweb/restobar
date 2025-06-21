@@ -196,10 +196,6 @@ export default function TableOrdersPage() {
           )}
           <div>
             <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
-            <p className="text-5xl text-gray-800 mt-1 flex items-center gap-2">
-              <Utensils className="h-8 w-8 text-red-600" /> Mesa:{" "}
-              <span className="font-extrabold text-red-600">{tableIdFromUrl}</span>
-            </p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
