@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // Import Select components
 import { Button } from "@/components/ui/button" // Import Button for the refresh button
+import Image from "next/image"
 
 // Custom hook for setting up an interval
 function useInterval(callback: () => void, delay: number | null) {
@@ -43,6 +44,7 @@ export default function TableOrdersPage() {
   const [availableTables, setAvailableTables] = useState<Table[]>([]) // Almacenar todas las mesas para el filtro
   const [selectedTableFilter, setSelectedTableFilter] = useState<string>(tableIdFromUrl.toString()) // Estado para el filtro de mesa, inicializado con la mesa de la URL
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<Order["status"] | "all">("pending") // Estado para el filtro de estado, por defecto "pending"
+  const [restaurantDetailsResponse, setRestaurantDetailsResponse] = useState<any>(null)
 
   const fetchOrders = async () => {
     setIsLoading(true)
@@ -61,6 +63,7 @@ export default function TableOrdersPage() {
 
         const restaurantSlug = tableResponse.data.table.qrCodeData.split("/")[4] // Extraer slug de la URL de qrCodeData
         const restaurantDetailsResponse = await ApiClient.getRestaurantBySlug(restaurantSlug)
+        setRestaurantDetailsResponse(restaurantDetailsResponse)
         if (restaurantDetailsResponse.success && restaurantDetailsResponse.data?.restaurant) {
           setRestaurantName(restaurantDetailsResponse.data.restaurant.name)
         } else {
@@ -175,10 +178,18 @@ export default function TableOrdersPage() {
       <header className="bg-white shadow-sm p-4 mb-6 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
-          <p className="text-xl text-gray-600">
-            Mesa de Contexto: <span className="font-semibold">{tableIdFromUrl}</span>
-          </p>
         </div>
+        {restaurantDetailsResponse?.data?.restaurant?.logo_url && (
+          <div className="flex-shrink-0 ml-auto">
+            <Image
+              src={restaurantDetailsResponse.data.restaurant.logo_url || "/placeholder.svg"}
+              alt={`${restaurantName} Logo`}
+              width={80} // Ajusta el tamaño según sea necesario
+              height={80} // Ajusta el tamaño según sea necesario
+              className="rounded-full object-cover"
+            />
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
           {/* Filtro por Mesa */}
           <Select value={selectedTableFilter} onValueChange={setSelectedTableFilter}>
