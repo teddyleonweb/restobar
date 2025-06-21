@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useParams } from "next/navigation"
 import { ApiClient, type Order } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,37 +28,46 @@ function useInterval(callback: () => void, delay: number | null) {
   }, [delay])
 }
 
-export default function TableOrdersPage() {
-  const params = useParams()
-  const tableId = Number.parseInt(params.tableId as string)
-
+export default function KitchenOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [restaurantName, setRestaurantName] = useState<string>("Cargando Restaurante...")
+  const [restaurantId, setRestaurantId] = useState<number | null>(null)
+
+  // Load restaurantId from localStorage on component mount
+  useEffect(() => {
+    const storedRestaurantId = localStorage.getItem("selectedRestaurantId") // Assuming you store the selected restaurant ID here
+    if (storedRestaurantId) {
+      setRestaurantId(Number.parseInt(storedRestaurantId))
+    } else {
+      setError("No se ha seleccionado un restaurante. Por favor, inicie sesión o seleccione uno.")
+      setIsLoading(false)
+    }
+  }, [])
 
   const fetchOrders = async () => {
+    if (!restaurantId) {
+      // Don't fetch if restaurantId is not available yet
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
     try {
-      // First, get table details to find the restaurantId
-      const tableResponse = await ApiClient.getTableById(tableId)
-      if (!tableResponse.success || !tableResponse.data?.table) {
-        throw new Error(tableResponse.error || "Mesa no encontrada.")
-      }
-      const restaurantId = tableResponse.data.table.restaurantId
-      const restaurantSlug = tableResponse.data.table.qrCodeData.split("/")[4] // Extract slug from qrCodeData URL
-
-      // Then, get restaurant details to display its name
-      const restaurantDetailsResponse = await ApiClient.getRestaurantBySlug(restaurantSlug)
+      // Fetch restaurant details to display its name
+      const restaurantDetailsResponse = await ApiClient.getRestaurantBySlug(
+        localStorage.getItem("selectedRestaurantSlug") || "", // Assuming slug is also stored
+      )
       if (restaurantDetailsResponse.success && restaurantDetailsResponse.data?.restaurant) {
         setRestaurantName(restaurantDetailsResponse.data.restaurant.name)
       } else {
         setRestaurantName("Restaurante Desconocido")
       }
 
-      // Now, fetch ALL orders for this restaurant (not just this table)
-      const ordersResponse = await ApiClient.getOrders(restaurantId) // Removed tableId parameter
+      // Then, fetch all orders for this restaurant (without tableId)
+      const ordersResponse = await ApiClient.getOrders(restaurantId)
       if (ordersResponse.success && ordersResponse.data) {
         // Filter for pending and processing orders
         const activeOrders = ordersResponse.data.orders.filter(
@@ -90,10 +98,10 @@ export default function TableOrdersPage() {
   }
 
   useEffect(() => {
-    if (tableId) {
+    if (restaurantId) {
       fetchOrders()
     }
-  }, [tableId])
+  }, [restaurantId]) // Re-fetch when restaurantId becomes available
 
   // Auto-refresh every 10 seconds
   useInterval(fetchOrders, 10000)
@@ -125,7 +133,7 @@ export default function TableOrdersPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
         <Loader2 className="h-12 w-12 animate-spin text-red-500 mb-4" />
-        <p className="text-lg text-gray-600">Cargando órdenes para la Mesa {tableId}...</p>
+        <p className="text-lg text-gray-600">Cargando órdenes para la cocina...</p>
       </div>
     )
   }
@@ -149,10 +157,8 @@ export default function TableOrdersPage() {
     <div className="min-h-screen bg-gray-50 p-4">
       <header className="bg-white shadow-sm p-4 mb-6 rounded-lg flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes del Restaurante {restaurantName}</h1>
-          <p className="text-xl text-gray-600">
-            Mesa de Contexto: <span className="font-semibold">{tableId}</span>
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de Cocina de {restaurantName}</h1>
+          <p className="text-xl text-gray-600">Todas las órdenes pendientes y en proceso</p>
         </div>
         <button
           onClick={fetchOrders}
@@ -166,7 +172,7 @@ export default function TableOrdersPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {orders.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-500">
-              <p className="text-lg font-semibold mb-2">No hay órdenes pendientes o en proceso para esta mesa.</p>
+              <p className="text-lg font-semibold mb-2">No hay órdenes pendientes o en proceso en este momento.</p>
               <p className="text-sm">Los nuevos pedidos aparecerán aquí automáticamente.</p>
             </div>
           ) : (
@@ -183,10 +189,8 @@ export default function TableOrdersPage() {
                           : order.status}
                     </span>
                   </div>
+                  <p className="text-lg font-semibold text-gray-700 mt-2">Mesa: {order.table_number}</p>
                   <p className="text-sm text-gray-600 mt-1">
-                    Mesa: <span className="font-semibold">{order.table_number}</span> {/* Added table number */}
-                  </p>
-                  <p className="text-sm text-gray-600">
                     Cliente: {order.customer_first_name} {order.customer_last_name}
                   </p>
                   <p className="text-sm text-gray-600">Hora: {formatDate(order.created_at)}</p>

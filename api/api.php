@@ -882,17 +882,17 @@ switch ($action) {
       ));
 
       $restaurant_tables = array_map(function($table) {
-          return [
-              'id' => (int) $table->id,
-              'tableNumber' => $table->table_number,
-              'capacity' => (int) $table->capacity,
-              'locationDescription' => $table->location_description,
-              'qrCodeData' => $table->qr_code_data,
-              'qrCodeUrl' => $table->qr_code_url,
-              'isActive' => (bool) $table->is_active,
-              'createdAt' => $table->created_at
-          ];
-      }, $tables);
+              return [
+                  'id' => (int) $table->id,
+                  'tableNumber' => $table->table_number,
+                  'capacity' => (int) $table->capacity,
+                  'locationDescription' => $table->location_description,
+                  'qrCodeData' => $table->qr_code_data,
+                  'qrCodeUrl' => $table->qr_code_url,
+                  'isActive' => (bool) $table->is_active,
+                  'createdAt' => $table->created_at
+              ];
+          }, $tables);
       // --- FIN NUEVA FUNCIONALIDAD ---
       
       send_success([
@@ -1062,7 +1062,7 @@ try {
             'sortOrder' => (int) $saved_image->sort_order,
             'restaurant_id' => (int) $saved_image->restaurant_id,
             'thumbnails' => $upload_result['thumbnails'],
-            'createdAt' => $saved_image->created_at
+            'createdAt' => $saved_image->createdAt
         ]
     ], 201);
     
@@ -3249,40 +3249,58 @@ case 'get-orders':
   ini_set('display_errors', 1);
   error_reporting(E_ALL);
 
-  // Verificar autenticación
-  $user_data = verify_token($token);
-  if (!$user_data) {
-      send_error('No autorizado', 401);
-  }
+  // NO SE VERIFICA AUTENTICACIÓN AQUÍ PARA PERMITIR ACCESO PÚBLICO A LA PÁGINA DE ÓRDENES DE COCINA
+  // $user_data = verify_token($token);
+  // if (!$user_data) {
+  //     send_error('No autorizado', 401);
+  // }
 
   $restaurant_id = isset($_GET['restaurant_id']) ? (int)$_GET['restaurant_id'] : 0;
+  $table_id_filter = isset($_GET['table_id']) ? (int)$_GET['table_id'] : 0; // Nuevo filtro por table_id
+  $status_filter = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : null; // Nuevo filtro por status
 
   // Validar restaurant_id
   if (!$restaurant_id || $restaurant_id <= 0) {
       send_error('ID de restaurante inválido o faltante.');
   }
 
-  // Verificar que el restaurante pertenece al usuario
+  // Verificar que el restaurante existe y está activo (no se verifica user_id aquí)
   global $wpdb;
   $restaurant = $wpdb->get_row($wpdb->prepare(
-      "SELECT id FROM kvq_tubarresto_restaurants WHERE id = %d AND user_id = %d",
-      $restaurant_id,
-      $user_data['id']
+      "SELECT id FROM kvq_tubarresto_restaurants WHERE id = %d AND status = 'active'",
+      $restaurant_id
   ));
 
   if (!$restaurant) {
-      send_error('Restaurante no encontrado o no autorizado', 404);
+      send_error('Restaurante no encontrado o inactivo', 404);
   }
 
-  // Obtener órdenes del restaurante, uniendo con la tabla de mesas para obtener el número de mesa
-  $orders = $wpdb->get_results($wpdb->prepare(
-      "SELECT o.*, t.table_number
-       FROM kvq_tubarresto_orders o
-       JOIN kvq_tubarresto_tables t ON o.table_id = t.id
-       WHERE o.restaurant_id = %d
-       ORDER BY o.created_at DESC",
-      $restaurant_id
-  ));
+  // Construir la consulta base
+  $query = "SELECT o.*, t.table_number
+            FROM kvq_tubarresto_orders o
+            JOIN kvq_tubarresto_tables t ON o.table_id = t.id
+            WHERE o.restaurant_id = %d";
+  $params = [$restaurant_id];
+
+  // Añadir filtro por table_id si está presente
+  if ($table_id_filter > 0) {
+      $query .= " AND o.table_id = %d";
+      $params[] = $table_id_filter;
+  }
+
+  // Añadir filtro por status si está presente
+  if ($status_filter) {
+      $allowed_statuses = ['pending', 'processing', 'completed', 'cancelled'];
+      if (!in_array($status_filter, $allowed_statuses)) {
+          send_error('Estado de orden inválido para el filtro: ' . $status_filter, 400);
+      }
+      $query .= " AND o.status = %s";
+      $params[] = $status_filter;
+  }
+
+  $query .= " ORDER BY o.created_at DESC";
+
+  $orders = $wpdb->get_results($wpdb->prepare($query, ...$params));
 
   error_log("DEBUG: get-orders - Total orders fetched: " . count($orders));
 
