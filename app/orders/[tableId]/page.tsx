@@ -6,7 +6,7 @@ import { ApiClient, type Order, type Table } from "@/lib/api-client" // Import T
 import { toast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, RefreshCw } from "lucide-react"
+import { Loader2, RefreshCw, Utensils } from "lucide-react" // Import Utensils icon
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // Import Select components
 import { Button } from "@/components/ui/button" // Import Button for the refresh button
 import Image from "next/image"
@@ -148,6 +148,7 @@ export default function TableOrdersPage() {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+      hour12: true, // Formato de 12 horas
     })
   }
 
@@ -195,8 +196,9 @@ export default function TableOrdersPage() {
           )}
           <div>
             <h1 className="text-3xl font-bold text-gray-900 font-playfair">Órdenes de {restaurantName}</h1>
-            <p className="text-2xl text-gray-800 mt-1">
-              Mesa: <span className="font-extrabold text-red-600">{tableIdFromUrl}</span>
+            <p className="text-5xl text-gray-800 mt-1 flex items-center gap-2">
+              <Utensils className="h-8 w-8 text-red-600" /> Mesa:{" "}
+              <span className="font-extrabold text-red-600">{tableIdFromUrl}</span>
             </p>
           </div>
         </div>
@@ -264,8 +266,9 @@ export default function TableOrdersPage() {
                             : "Cancelado"}
                     </span>
                   </div>
-                  <p className="text-lg text-gray-800 mt-1">
-                    Mesa: <span className="font-extrabold text-red-600">{order.table_number}</span>
+                  <p className="text-xl text-gray-800 mt-1 flex items-center gap-2">
+                    <Utensils className="h-5 w-5 text-red-600" /> Mesa:{" "}
+                    <span className="font-extrabold text-red-600">{order.table_number}</span>
                   </p>
                   <p className="text-sm text-gray-600">
                     Cliente: {order.customer_first_name} {order.customer_last_name}
